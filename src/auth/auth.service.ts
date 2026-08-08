@@ -6,13 +6,13 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
 import * as bcrypt from 'bcrypt';
-import { QueryFailedError, Repository } from 'typeorm';
+import { Repository } from 'typeorm';
+import { isUniqueViolation } from '../common/db-errors';
 import { User } from '../users/user.entity';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 
 const BCRYPT_ROUNDS = 10;
-const PG_UNIQUE_VIOLATION = '23505';
 
 export interface PublicUser {
   id: string;
@@ -60,11 +60,7 @@ export class AuthService {
     } catch (error) {
       // Carrera TOCTOU: si dos registros simultáneos pisan el pre-check,
       // PostgreSQL rechaza el INSERT con violación de unicidad (23505)
-      if (
-        error instanceof QueryFailedError &&
-        (error as { driverError?: { code?: string } }).driverError?.code ===
-          PG_UNIQUE_VIOLATION
-      ) {
+      if (isUniqueViolation(error)) {
         throw new ConflictException('Ya existe una cuenta con este email');
       }
       throw error;
