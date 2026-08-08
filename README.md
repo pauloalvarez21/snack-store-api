@@ -64,6 +64,19 @@ npm run start:prod
 
 La API queda disponible en `http://localhost:3000` con el prefijo global `/api` y CORS habilitado.
 
+## 📖 Documentación de la API (Swagger / OpenAPI)
+
+La API expone documentación interactiva generada con `@nestjs/swagger`:
+
+- **Swagger UI** (explorar y probar los endpoints): `http://localhost:3000/api/docs`
+- **Documento JSON**: `http://localhost:3000/api/docs-json`
+
+Para generar un archivo `openapi.json` estático (p. ej. para entregarlo al frontend):
+
+```bash
+npm run generate:openapi   # genera ./openapi.json en la raíz
+```
+
 ## 🔐 Autenticación
 
 Todos los endpoints de autenticación viven bajo `/api/auth`.
