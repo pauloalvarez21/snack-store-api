@@ -113,6 +113,161 @@
         ]
       }
     },
+    "/api/carts/me": {
+      "get": {
+        "operationId": "CartsController_getMyCart",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Ver mi carrito (se crea automáticamente si no existe)",
+        "tags": [
+          "carts"
+        ]
+      },
+      "delete": {
+        "operationId": "CartsController_clearCart",
+        "parameters": [],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Vaciar el carrito",
+        "tags": [
+          "carts"
+        ]
+      }
+    },
+    "/api/carts/me/items": {
+      "post": {
+        "operationId": "CartsController_addItem",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddCartItemDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Agregar producto al carrito (si ya está, suma la cantidad)",
+        "tags": [
+          "carts"
+        ]
+      }
+    },
+    "/api/carts/me/items/{productId}": {
+      "patch": {
+        "operationId": "CartsController_updateItem",
+        "parameters": [
+          {
+            "name": "productId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateCartItemDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Fijar la cantidad de un producto en el carrito",
+        "tags": [
+          "carts"
+        ]
+      },
+      "delete": {
+        "operationId": "CartsController_removeItem",
+        "parameters": [
+          {
+            "name": "productId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Quitar un producto del carrito",
+        "tags": [
+          "carts"
+        ]
+      }
+    },
     "/api/categories": {
       "get": {
         "operationId": "CategoriesController_findAll",
@@ -830,6 +985,42 @@
         "required": [
           "email",
           "password"
+        ]
+      },
+      "AddCartItemDto": {
+        "type": "object",
+        "properties": {
+          "productId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "8b1a2d5e-1111-1111-1111-111111111111"
+          },
+          "quantity": {
+            "type": "number",
+            "minimum": 0.001,
+            "maximum": 99999999,
+            "example": 2,
+            "description": "Cantidad (máx. 3 decimales)"
+          }
+        },
+        "required": [
+          "productId",
+          "quantity"
+        ]
+      },
+      "UpdateCartItemDto": {
+        "type": "object",
+        "properties": {
+          "quantity": {
+            "type": "number",
+            "minimum": 0.001,
+            "maximum": 99999999,
+            "example": 3,
+            "description": "Nueva cantidad (máx. 3 decimales)"
+          }
+        },
+        "required": [
+          "quantity"
         ]
       },
       "CreateCategoryDto": {

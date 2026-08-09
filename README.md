@@ -337,6 +337,46 @@ curl -X POST http://localhost:3000/api/inventory/PRODUCT_ID/adjust \
 
 > El seed carga stock variado a propósito: 2 productos agotados y 3 en nivel bajo para probar los tres estados en el front.
 
+### 🛒 Carrito de compras — `/api/carts`
+
+El carrito es **por usuario autenticado** (cualquier rol; el front usa la cuenta CUSTOMER). Se crea automáticamente la primera vez que se accede. Cada item incluye el producto con su **precio efectivo** (usa `salePrice` si existe) y el subtotal calculado.
+
+| Método | Endpoint | Acceso | Descripción |
+|--------|----------|--------|-------------|
+| `GET` | `/api/carts/me` | Autenticado | Ver mi carrito (se crea si no existe) |
+| `POST` | `/api/carts/me/items` | Autenticado | Agregar producto `{productId, quantity}` (si ya está, suma la cantidad) |
+| `PATCH` | `/api/carts/me/items/:productId` | Autenticado | Fijar la cantidad `{quantity}` |
+| `DELETE` | `/api/carts/me/items/:productId` | Autenticado | Quitar un producto (204) |
+| `DELETE` | `/api/carts/me` | Autenticado | Vaciar el carrito (204) |
+
+```bash
+# Agregar al carrito (con el token de cliente@snack.store)
+curl -X POST http://localhost:3000/api/carts/me/items \
+  -H "Authorization: Bearer TU_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"productId": "8b1a2d5e-0001-4f00-8000-000000000001", "quantity": 2}'
+```
+
+**Respuesta `201 Created` (resumen):**
+
+```json
+{
+  "id": "…",
+  "items": [
+    {
+      "productId": "8b1a2d5e-…",
+      "quantity": 2,
+      "product": { "name": "Manzana Roja", "price": 2.5, "salePrice": 1.99, "inStock": true, "stockStatus": "IN_STOCK", "imageUrl": "…" },
+      "subtotal": 3.98
+    }
+  ],
+  "itemsCount": 1,
+  "subtotal": 3.98
+}
+```
+
+> El stock exacto se valida al momento de crear el pedido (checkout), no al agregar al carrito.
+
 ## 🧪 Tests
 
 ```bash
@@ -392,6 +432,13 @@ src/
 │   ├── inventory.controller.ts
 │   ├── inventory.module.ts
 │   └── inventory.utils.ts   # Derivación de IN_STOCK / LOW_STOCK / OUT_OF_STOCK
+├── carts/                # Carrito de compras por usuario (autenticado)
+│   ├── dto/
+│   ├── cart.entity.ts
+│   ├── cart-item.entity.ts
+│   ├── carts.service.ts
+│   ├── carts.controller.ts
+│   └── carts.module.ts
 ├── users/                # Entidad User y módulo de usuarios
 │   ├── user.entity.ts
 │   └── users.module.ts
@@ -415,6 +462,6 @@ test/                     # Tests e2e
 - [x] Autenticación (registro / login / JWT)
 - [x] Categorías y productos (CRUD con roles)
 - [x] Inventario (stock con disponibilidad pública y gestión solo ADMIN)
-- [ ] Carrito de compras
+- [x] Carrito de compras (agregar / actualizar / quitar items)
 - [ ] Pedidos y pagos
 - [ ] Direcciones de envío
