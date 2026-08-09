@@ -1,14 +1,25 @@
 import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import type { Response } from 'express';
 import { AppModule } from './app.module';
+import { UPLOADS_DIR } from './uploads/uploads.constants';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
   app.setGlobalPrefix('api');
   app.enableCors();
+
+  // Imágenes subidas por el front: se guardan en uploads/ y se sirven en /uploads/...
+  app.useStaticAssets(UPLOADS_DIR, {
+    prefix: '/uploads',
+    // Evita que el navegador interprete el contenido como otro tipo (MIME sniffing)
+    setHeaders: (res: Response) =>
+      res.setHeader('X-Content-Type-Options', 'nosniff'),
+  });
 
   app.useGlobalPipes(
     new ValidationPipe({
