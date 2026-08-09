@@ -1,12 +1,14 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { AddressesModule } from './addresses/addresses.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
 import { CartsModule } from './carts/carts.module';
 import { CategoriesModule } from './categories/categories.module';
 import { InventoryModule } from './inventory/inventory.module';
+import { OrdersModule } from './orders/orders.module';
 import { ProductsModule } from './products/products.module';
 import { UploadsModule } from './uploads/uploads.module';
 import { UsersModule } from './users/users.module';
@@ -31,10 +33,12 @@ import { UsersModule } from './users/users.module';
     }),
     UsersModule,
     AuthModule,
+    AddressesModule,
     CartsModule,
     CategoriesModule,
     ProductsModule,
     InventoryModule,
+    OrdersModule,
     UploadsModule,
   ],
   controllers: [AppController],

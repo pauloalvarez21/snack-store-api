@@ -98,7 +98,16 @@ CREATE TABLE orders (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     order_number SERIAL UNIQUE,
     user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    delivered_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL, -- Repartidor que confirmó la entrega
     address_id UUID REFERENCES addresses(id) ON DELETE SET NULL,
+    -- Snapshot de la dirección al momento de la compra (historial inmutable:
+    -- si el usuario edita o borra su libreta, el pedido conserva estos datos)
+    shipping_address_line1 VARCHAR(255),
+    shipping_address_line2 VARCHAR(255),
+    shipping_city VARCHAR(100),
+    shipping_state_province VARCHAR(100),
+    shipping_postal_code VARCHAR(20),
+    shipping_delivery_notes TEXT,
     status order_status DEFAULT 'PENDING',
     subtotal DECIMAL(10, 2) NOT NULL CHECK (subtotal >= 0),
     delivery_fee DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
@@ -130,6 +139,17 @@ CREATE TABLE payments (
     amount DECIMAL(10, 2) NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Migración: si tu base ya tenía la tabla orders sin las columnas
+-- snapshot de dirección ni delivered_by_user_id, ejecuta:
+ALTER TABLE orders
+    ADD COLUMN IF NOT EXISTS shipping_address_line1 VARCHAR(255),
+    ADD COLUMN IF NOT EXISTS shipping_address_line2 VARCHAR(255),
+    ADD COLUMN IF NOT EXISTS shipping_city VARCHAR(100),
+    ADD COLUMN IF NOT EXISTS shipping_state_province VARCHAR(100),
+    ADD COLUMN IF NOT EXISTS shipping_postal_code VARCHAR(20),
+    ADD COLUMN IF NOT EXISTS shipping_delivery_notes TEXT,
+    ADD COLUMN IF NOT EXISTS delivered_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL;
 
 -- Índices recomendados para optimizar búsquedas
 CREATE INDEX idx_products_category ON products(category_id);

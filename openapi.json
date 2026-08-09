@@ -113,6 +113,178 @@
         ]
       }
     },
+    "/api/addresses": {
+      "get": {
+        "operationId": "AddressesController_findAll",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Mis direcciones de envío (la principal primero)",
+        "tags": [
+          "addresses"
+        ]
+      },
+      "post": {
+        "operationId": "AddressesController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAddressDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Crear una dirección (la primera se vuelve la principal)",
+        "tags": [
+          "addresses"
+        ]
+      }
+    },
+    "/api/addresses/{id}": {
+      "get": {
+        "operationId": "AddressesController_findOne",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Detalle de una dirección propia",
+        "tags": [
+          "addresses"
+        ]
+      },
+      "patch": {
+        "operationId": "AddressesController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateAddressDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Actualizar una dirección propia",
+        "tags": [
+          "addresses"
+        ]
+      },
+      "delete": {
+        "operationId": "AddressesController_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Eliminar una dirección propia",
+        "tags": [
+          "addresses"
+        ]
+      }
+    },
     "/api/carts/me": {
       "get": {
         "operationId": "CartsController_getMyCart",
@@ -865,6 +1037,452 @@
         ]
       }
     },
+    "/api/orders": {
+      "post": {
+        "description": "Valida stock, congela precios, descuenta inventario y crea el pago simulado. Las tarjetas se cobran al instante (order → PAID); transferencia y contra entrega quedan PENDING.",
+        "operationId": "OrdersController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateOrderDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Crear un pedido a partir del carrito (checkout)",
+        "tags": [
+          "orders"
+        ]
+      },
+      "get": {
+        "operationId": "OrdersController_findAll",
+        "parameters": [
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "default": 1,
+              "example": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20,
+              "example": 20,
+              "type": "number"
+            }
+          },
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "description": "Filtrar por estado del pedido",
+            "schema": {
+              "example": "PAID",
+              "type": "string",
+              "enum": [
+                "PENDING",
+                "PAID",
+                "PREPARING",
+                "OUT_FOR_DELIVERY",
+                "DELIVERED",
+                "CANCELLED"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Listar todos los pedidos (solo ADMIN/DELIVERY)",
+        "tags": [
+          "orders"
+        ]
+      }
+    },
+    "/api/orders/me": {
+      "get": {
+        "operationId": "OrdersController_findMy",
+        "parameters": [
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "default": 1,
+              "example": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20,
+              "example": 20,
+              "type": "number"
+            }
+          },
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "description": "Filtrar por estado del pedido",
+            "schema": {
+              "example": "PAID",
+              "type": "string",
+              "enum": [
+                "PENDING",
+                "PAID",
+                "PREPARING",
+                "OUT_FOR_DELIVERY",
+                "DELIVERED",
+                "CANCELLED"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Mis pedidos (paginado, opcionalmente por estado)",
+        "tags": [
+          "orders"
+        ]
+      }
+    },
+    "/api/orders/deliveries/me": {
+      "get": {
+        "description": "Historial paginado de los pedidos que el repartidor autenticado entregó, con resumen: total entregado, monto cobrado y entregas de hoy. Filtros: page, limit, from, to.",
+        "operationId": "OrdersController_findMyDeliveries",
+        "parameters": [
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "default": 1,
+              "example": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20,
+              "example": 20,
+              "type": "number"
+            }
+          },
+          {
+            "name": "userId",
+            "required": false,
+            "in": "query",
+            "description": "Repartidor a filtrar (solo ADMIN). Por defecto usa el repartidor autenticado.",
+            "schema": {
+              "format": "uuid",
+              "example": "8b1a2d5e-1111-1111-1111-111111111111",
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "required": false,
+            "in": "query",
+            "description": "Filtrar entregas desde esta fecha (ISO 8601)",
+            "schema": {
+              "example": "2026-08-01T00:00:00.000Z",
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "required": false,
+            "in": "query",
+            "description": "Filtrar entregas hasta esta fecha (ISO 8601)",
+            "schema": {
+              "example": "2026-08-31T23:59:59.000Z",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Reporte de mis entregas (repartidor) con resumen agregado",
+        "tags": [
+          "orders"
+        ]
+      }
+    },
+    "/api/orders/deliveries": {
+      "get": {
+        "description": "Igual que /deliveries/me pero permite filtrar por repartidor con ?userId=. Sin userId usa el repartidor autenticado.",
+        "operationId": "OrdersController_findAllDeliveries",
+        "parameters": [
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "default": 1,
+              "example": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20,
+              "example": 20,
+              "type": "number"
+            }
+          },
+          {
+            "name": "userId",
+            "required": false,
+            "in": "query",
+            "description": "Repartidor a filtrar (solo ADMIN). Por defecto usa el repartidor autenticado.",
+            "schema": {
+              "format": "uuid",
+              "example": "8b1a2d5e-1111-1111-1111-111111111111",
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "required": false,
+            "in": "query",
+            "description": "Filtrar entregas desde esta fecha (ISO 8601)",
+            "schema": {
+              "example": "2026-08-01T00:00:00.000Z",
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "required": false,
+            "in": "query",
+            "description": "Filtrar entregas hasta esta fecha (ISO 8601)",
+            "schema": {
+              "example": "2026-08-31T23:59:59.000Z",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Reporte de entregas de cualquier repartidor (solo ADMIN)",
+        "tags": [
+          "orders"
+        ]
+      }
+    },
+    "/api/orders/{id}": {
+      "get": {
+        "operationId": "OrdersController_findOne",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Detalle de un pedido (dueño, ADMIN o DELIVERY)",
+        "tags": [
+          "orders"
+        ]
+      }
+    },
+    "/api/orders/{id}/deliver": {
+      "post": {
+        "description": "Endpoint único del repartidor: pasa el pedido de OUT_FOR_DELIVERY a DELIVERED, registra quién lo entregó (deliveredBy) y cobra los pagos contra entrega.",
+        "operationId": "OrdersController_deliver",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Confirmar la entrega de un pedido (solo ADMIN/DELIVERY)",
+        "tags": [
+          "orders"
+        ]
+      }
+    },
+    "/api/orders/{id}/status": {
+      "patch": {
+        "description": "CUSTOMER (dueño) puede cancelar su pedido. ADMIN avanza el flujo (PAID, PREPARING, OUT_FOR_DELIVERY, DELIVERED, CANCELLED). DELIVERY marca PREPARING→OUT_FOR_DELIVERY→DELIVERED.",
+        "operationId": "OrdersController_updateStatus",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateOrderStatusDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Actualizar el estado de un pedido",
+        "tags": [
+          "orders"
+        ]
+      }
+    },
     "/api/uploads/images": {
       "post": {
         "description": "Devuelve la imageUrl pública que luego se envía al crear o editar un producto. Es opcional: los productos pueden crearse sin imagen.",
@@ -986,6 +1604,94 @@
           "email",
           "password"
         ]
+      },
+      "CreateAddressDto": {
+        "type": "object",
+        "properties": {
+          "addressLine1": {
+            "type": "string",
+            "maxLength": 255,
+            "example": "Av. Providencia 1234, Depto 501"
+          },
+          "addressLine2": {
+            "type": "string",
+            "maxLength": 255,
+            "example": "Torre B"
+          },
+          "city": {
+            "type": "string",
+            "maxLength": 100,
+            "example": "Santiago"
+          },
+          "stateProvince": {
+            "type": "string",
+            "maxLength": 100,
+            "example": "Región Metropolitana"
+          },
+          "postalCode": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20,
+            "example": "7500000"
+          },
+          "deliveryNotes": {
+            "type": "string",
+            "maxLength": 500,
+            "example": "Llamar al llegar, portería no responde."
+          },
+          "isDefault": {
+            "type": "boolean",
+            "description": "Marca esta dirección como la principal del usuario",
+            "example": true,
+            "default": false
+          }
+        },
+        "required": [
+          "addressLine1",
+          "city"
+        ]
+      },
+      "UpdateAddressDto": {
+        "type": "object",
+        "properties": {
+          "addressLine1": {
+            "type": "string",
+            "maxLength": 255,
+            "example": "Av. Providencia 1234, Depto 501"
+          },
+          "addressLine2": {
+            "type": "string",
+            "maxLength": 255,
+            "example": "Torre B"
+          },
+          "city": {
+            "type": "string",
+            "maxLength": 100,
+            "example": "Santiago"
+          },
+          "stateProvince": {
+            "type": "string",
+            "maxLength": 100,
+            "example": "Región Metropolitana"
+          },
+          "postalCode": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20,
+            "example": "7500000"
+          },
+          "deliveryNotes": {
+            "type": "string",
+            "maxLength": 500,
+            "example": "Llamar al llegar, portería no responde."
+          },
+          "isDefault": {
+            "type": "boolean",
+            "description": "Marca esta dirección como la principal del usuario",
+            "example": true,
+            "default": false
+          }
+        }
       },
       "AddCartItemDto": {
         "type": "object",
@@ -1280,6 +1986,62 @@
         },
         "required": [
           "quantity"
+        ]
+      },
+      "CreateOrderDto": {
+        "type": "object",
+        "properties": {
+          "addressId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "8b1a2d5e-1111-1111-1111-111111111111",
+            "description": "Dirección de envío guardada (id de /api/addresses). Si se envía, se guarda un snapshot inmutable en el pedido."
+          },
+          "deliverySlotStart": {
+            "type": "string",
+            "example": "2026-08-10T14:00:00.000Z",
+            "description": "Inicio de la franja horaria de entrega (ISO 8601)"
+          },
+          "deliverySlotEnd": {
+            "type": "string",
+            "example": "2026-08-10T16:00:00.000Z",
+            "description": "Fin de la franja horaria de entrega (ISO 8601)"
+          },
+          "paymentMethod": {
+            "enum": [
+              "CREDIT_CARD",
+              "DEBIT_CARD",
+              "CASH_ON_DELIVERY",
+              "TRANSFER"
+            ],
+            "type": "string",
+            "description": "Método de pago del pedido",
+            "example": "CREDIT_CARD"
+          }
+        },
+        "required": [
+          "paymentMethod"
+        ]
+      },
+      "UpdateOrderStatusDto": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "enum": [
+              "PENDING",
+              "PAID",
+              "PREPARING",
+              "OUT_FOR_DELIVERY",
+              "DELIVERED",
+              "CANCELLED"
+            ],
+            "type": "string",
+            "description": "Nuevo estado del pedido",
+            "example": "PREPARING"
+          }
+        },
+        "required": [
+          "status"
         ]
       }
     }

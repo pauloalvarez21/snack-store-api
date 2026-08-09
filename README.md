@@ -82,6 +82,14 @@ node --env-file=.env scripts/seed-users.mjs
 Los seeds son **idempotentes** (`ON CONFLICT DO NOTHING`): se pueden re-ejecutar sin duplicar datos.
 Al re-ejecutar `seed.mjs`, en productos solo se refresca `image_url`.
 
+> **Si tu base ya existía antes de los módulos de pedidos/direcciones:** ejecuta una vez
+> la migración que añade las columnas de envío y de entrega a la tabla `orders`
+> (idempotente, también incluida al final de `schema.sql`):
+>
+> ```bash
+> node --env-file=.env scripts/migrate-orders-shipping.mjs
+> ```
+
 ### 👤 Usuarios demo
 
 | Rol | Email | Contraseña |
@@ -337,6 +345,164 @@ curl -X POST http://localhost:3000/api/inventory/PRODUCT_ID/adjust \
 
 > El seed carga stock variado a propósito: 2 productos agotados y 3 en nivel bajo para probar los tres estados en el front.
 
+### 📍 Direcciones de envío — `/api/addresses`
+
+Cada usuario tiene su propia libreta de direcciones. La primera que crea se vuelve la **principal** (`isDefault`); al marcar una nueva como principal, las demás se desmarcan. Todo endpoint requiere autenticación y **solo opera sobre las direcciones del propio usuario** (las ajenas dan `404`).
+
+| Método | Endpoint | Descripción |
+|--------|----------|-------------|
+| `GET` | `/api/addresses` | Mis direcciones (la principal primero) |
+| `POST` | `/api/addresses` | Crear dirección (la primera → principal) |
+| `GET` | `/api/addresses/:id` | Detalle de una dirección propia |
+| `PATCH` | `/api/addresses/:id` | Actualizar (puede marcarse como principal) |
+| `DELETE` | `/api/addresses/:id` | Eliminar (204); si era la principal, la más antigua la sucede |
+
+```bash
+curl -X POST http://localhost:3000/api/addresses \
+  -H "Authorization: Bearer TU_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"addressLine1": "Av. Providencia 1234", "city": "Santiago", "isDefault": true}'
+```
+
+### 🧾 Pedidos y pagos — `/api/orders`
+
+El checkout convierte el carrito en un pedido: valida el stock real en ese momento, **congela los precios** en `order_items` (historial inmutable aunque el producto cambie), **congela la dirección de envío** elegida (`shippingAddress` snapshot), descuenta el inventario de forma atómica y crea el **pago simulado**.
+
+**Pagos simulados** (sin pasarela externa todavía):
+
+| Método | Comportamiento |
+|--------|----------------|
+| `CREDIT_CARD` / `DEBIT_CARD` | Se "cobra" al instante → `payment COMPLETED` y pedido `PAID` |
+| `TRANSFER` | Queda `PENDING` hasta que un ADMIN confirme el pago (pedido → `PAID`) |
+| `CASH_ON_DELIVERY` | Queda `PENDING` y se marca `COMPLETED` al entregar |
+
+**Ciclo de vida del pedido:** `PENDING → PAID → PREPARING → OUT_FOR_DELIVERY → DELIVERED` (o `CANCELLED`).
+
+| Método | Endpoint | Acceso | Descripción |
+|--------|----------|--------|-------------|
+| `POST` | `/api/orders` | Autenticado | Checkout: convierte el carrito en pedido y crea el pago |
+| `GET` | `/api/orders/me` | Autenticado | Mis pedidos (`?page=&limit=&status=`) |
+| `GET` | `/api/orders` | ADMIN/DELIVERY | Todos los pedidos, paginado y filtrable por estado |
+| `GET` | `/api/orders/:id` | Dueño/ADMIN/DELIVERY | Detalle con items, pago y quién entregó |
+| `POST` | `/api/orders/:id/deliver` | ADMIN/DELIVERY | **Confirmar la entrega** (endpoint único del repartidor) |
+| `GET` | `/api/orders/deliveries/me` | ADMIN/DELIVERY | **Reporte de mis entregas** con resumen agregado |
+| `GET` | `/api/orders/deliveries` | ADMIN | Reporte de entregas de cualquier repartidor (`?userId=`) |
+| `PATCH` | `/api/orders/:id/status` | Según rol | Cambiar estado (ver abajo) |
+
+```bash
+# 1. Agregar al carrito
+curl -X POST http://localhost:3000/api/carts/me/items \
+  -H "Authorization: Bearer TU_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"productId": "8b1a2d5e-…", "quantity": 2}'
+
+# 2. Checkout con tarjeta y dirección guardada (pago simulado, queda PAID)
+curl -X POST http://localhost:3000/api/orders \
+  -H "Authorization: Bearer TU_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"addressId": "8b1a2d5e-…", "paymentMethod": "CREDIT_CARD"}'
+```
+
+**Respuesta `201 Created` (resumen):**
+
+```json
+{
+  "id": "…",
+  "orderNumber": 42,
+  "status": "PAID",
+  "subtotal": 3.98,
+  "deliveryFee": 0,
+  "total": 3.98,
+  "shippingAddress": {
+    "addressLine1": "Av. Providencia 1234",
+    "addressLine2": null,
+    "city": "Santiago",
+    "stateProvince": null,
+    "postalCode": null,
+    "deliveryNotes": null
+  },
+  "items": [
+    {
+      "productId": "…",
+      "productName": "Manzana Roja",
+      "unitPrice": 1.99,
+      "quantity": 2,
+      "subtotal": 3.98
+    }
+  ],
+  "payment": {
+    "id": "…",
+    "method": "CREDIT_CARD",
+    "status": "COMPLETED",
+    "transactionId": "SIM-1A2B3C4D",
+    "amount": 3.98
+  }
+}
+```
+
+**Cambios de estado (`PATCH /api/orders/:id/status`):**
+
+| Acción | Rol | Transición |
+|--------|-----|------------|
+| Confirmar pago por transferencia | ADMIN | `PENDING → PAID` |
+| Empezar a preparar | ADMIN | `PENDING/PAID → PREPARING` |
+| En ruta de reparto | ADMIN o DELIVERY | `PREPARING → OUT_FOR_DELIVERY` |
+| Entregado (cobra el pago contra entrega) | ADMIN o DELIVERY | `OUT_FOR_DELIVERY → DELIVERED` |
+| Cancelar pedido (reembolso si ya se cobró; devuelve el stock) | Dueño (PENDING/PAID) o ADMIN | `→ CANCELLED` |
+
+**Confirmar la entrega con un clic** (`POST /api/orders/:id/deliver`): el repartidor cierra el pedido cuando lo entrega. Solo funciona en pedidos `OUT_FOR_DELIVERY`, **registra quién lo entregó** (`deliveredBy`) y cobra los pagos contra entrega.
+
+```bash
+# El repartidor confirma la entrega
+curl -X POST http://localhost:3000/api/orders/ID_PEDIDO/deliver \
+  -H "Authorization: Bearer TOKEN_REPARTIDOR"
+```
+
+**Respuesta `200 OK`:** el pedido queda `DELIVERED` con el repartidor registrado:
+
+```json
+{
+  "id": "…",
+  "orderNumber": 42,
+  "status": "DELIVERED",
+  "deliveredBy": { "id": "…", "email": "repartidor@snack.store", "firstName": "…", "lastName": "…" },
+  "total": 3.98,
+  "payment": { "method": "CASH_ON_DELIVERY", "status": "COMPLETED", "amount": 3.98 }
+}
+```
+
+> Al cancelar, el stock vuelve al inventario y el pago pasa a `REFUNDED` (si estaba `COMPLETED`) o `FAILED`.
+
+> **La dirección es fija al confirmar:** si el pedido incluye `addressId`, se guarda una copia (`shippingAddress`) en el pedido. Editar o borrar la dirección de la libreta después no afecta al pedido ya creado.
+
+> **Quién entregó:** al marcar `DELIVERED` (vía `/deliver` o `PATCH status`), el pedido queda asociado al usuario que confirmó la entrega (`deliveredBy`).
+
+**Reporte de entregas** (`GET /api/orders/deliveries/me`): el repartidor ve su historial paginado de entregas con un **resumen agregado** (total entregado, monto cobrado y entregas de hoy). Filtros opcionales: `?page=&limit=&from=&to=`. El ADMIN puede ver las entregas de cualquier repartidor con `GET /api/orders/deliveries?userId=ID`.
+
+```bash
+# Repartidor: mi historial con resumen
+curl "http://localhost:3000/api/orders/deliveries/me?from=2026-08-01T00:00:00.000Z" \
+  -H "Authorization: Bearer TOKEN_REPARTIDOR"
+```
+
+**Respuesta `200 OK`:**
+
+```json
+{
+  "data": [{ "id": "…", "status": "DELIVERED", "total": 3.98, "deliveredBy": { … } }],
+  "total": 12,
+  "page": 1,
+  "limit": 20,
+  "totalPages": 1,
+  "summary": {
+    "totalDelivered": 12,
+    "totalAmount": 47.85,
+    "todayDelivered": 3,
+    "todayAmount": 11.94
+  }
+}
+```
+
 ### 🛒 Carrito de compras — `/api/carts`
 
 El carrito es **por usuario autenticado** (cualquier rol; el front usa la cuenta CUSTOMER). Se crea automáticamente la primera vez que se accede. Cada item incluye el producto con su **precio efectivo** (usa `salePrice` si existe) y el subtotal calculado.
@@ -439,6 +605,21 @@ src/
 │   ├── carts.service.ts
 │   ├── carts.controller.ts
 │   └── carts.module.ts
+├── addresses/            # Libreta de direcciones de envío por usuario
+│   ├── dto/
+│   ├── address.entity.ts
+│   ├── addresses.service.ts
+│   ├── addresses.controller.ts
+│   └── addresses.module.ts
+├── orders/               # Pedidos y pagos (checkout desde el carrito)
+│   ├── dto/
+│   ├── order.entity.ts
+│   ├── order-item.entity.ts
+│   ├── payment.entity.ts
+│   ├── payments.service.ts   # Pago simulado (tarjeta/transferencia/contra entrega)
+│   ├── orders.service.ts
+│   ├── orders.controller.ts
+│   └── orders.module.ts
 ├── users/                # Entidad User y módulo de usuarios
 │   ├── user.entity.ts
 │   └── users.module.ts
@@ -447,7 +628,8 @@ src/
 └── main.ts               # Bootstrap (prefijo /api, CORS, ValidationPipe)
 schema.sql                # Esquema de la base de datos
 seed.sql                  # Datos demo (categorías y productos con fotos)
-scripts/                  # Scripts auxiliares (seed, usuarios demo, openapi)
+scripts/                  # Scripts auxiliares (seed, usuarios demo, openapi, migraciones)
+├── migrate-orders-shipping.mjs   # Migración idempotente de columnas de envío/entrega
 test/                     # Tests e2e
 ```
 
@@ -463,5 +645,6 @@ test/                     # Tests e2e
 - [x] Categorías y productos (CRUD con roles)
 - [x] Inventario (stock con disponibilidad pública y gestión solo ADMIN)
 - [x] Carrito de compras (agregar / actualizar / quitar items)
-- [ ] Pedidos y pagos
-- [ ] Direcciones de envío
+- [x] Pedidos y pagos (checkout con pago simulado y ciclo de estados)
+- [x] Direcciones de envío (libreta por usuario + snapshot inmutable en el pedido)
+- [ ] Pasarela de pago real (Stripe / Mercado Pago / Transbank)
