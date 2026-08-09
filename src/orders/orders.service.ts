@@ -20,6 +20,7 @@ import { UserRole } from '../users/user.entity';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { ListDeliveriesDto } from './dto/list-deliveries.dto';
 import { ListOrdersDto } from './dto/list-orders.dto';
+import { SalesReportDto } from './dto/sales-report.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 import { OrderItem } from './order-item.entity';
 import { Order, OrderStatus } from './order.entity';
@@ -75,8 +76,54 @@ interface DeliveriesSummaryRow {
   totalAmount: string;
 }
 
+/** Filas crudas del reporte de ventas. */
+interface SalesSummaryRow {
+  totalOrders: string;
+  totalAmount: string;
+}
+
+interface SalesByDayRow {
+  date: string;
+  orders: string;
+  amount: string;
+}
+
+interface SalesByPaymentRow {
+  method: string;
+  orders: string;
+  amount: string;
+}
+
+interface SalesTopProductRow {
+  productId: string | null;
+  productName: string;
+  quantity: string;
+  amount: string;
+}
+
 export interface DeliveriesReport extends Paginated<OrderResponse> {
   summary: DeliveriesSummary;
+}
+
+export interface SalesReport {
+  /** Rango efectivo del reporte (sin filtros → null) */
+  range: { from: string | null; to: string | null };
+  summary: {
+    totalOrders: number;
+    totalAmount: number;
+    averageTicket: number;
+  };
+  /** Ventas agrupadas por día (más reciente primero) */
+  byDay: { date: string; orders: number; amount: number }[];
+  /** Productos más vendidos por monto (top N) */
+  topProducts: {
+    productId: string | null;
+    productName: string;
+    quantity: number;
+    amount: number;
+  }[];
+  /** Desglose por método de pago */
+  byPaymentMethod: { method: PaymentMethod; orders: number; amount: number }[];
 }
 
 export interface OrderShippingAddress {
@@ -479,6 +526,115 @@ export class OrdersService {
     return qb
       .select('COUNT(*)', 'totalDelivered')
       .addSelect('COALESCE(SUM(order.total), 0)', 'totalAmount');
+  }
+
+  /**
+   * Reporte de ventas (solo ADMIN). Cuenta como venta todo pedido pagado o
+   * en proceso (PAID, PREPARING, OUT_FOR_DELIVERY, DELIVERED); quedan fuera
+   * PENDING (pago sin confirmar) y CANCELLED.
+   */
+  async getSalesReport(query: SalesReportDto): Promise<SalesReport> {
+    const paidStatuses = [
+      OrderStatus.PAID,
+      OrderStatus.PREPARING,
+      OrderStatus.OUT_FOR_DELIVERY,
+      OrderStatus.DELIVERED,
+    ];
+    const topLimit = query.topLimit ?? 10;
+
+    // Base con estado + rango de fechas (si se envió)
+    const base = (): SelectQueryBuilder<Order> => {
+      const qb = this.ordersRepository
+        .createQueryBuilder('order')
+        .where('order.status IN (:...statuses)', { statuses: paidStatuses });
+      if (query.from) {
+        qb.andWhere('order.created_at >= :from', {
+          from: new Date(query.from),
+        });
+      }
+      if (query.to) {
+        qb.andWhere('order.created_at <= :to', { to: new Date(query.to) });
+      }
+      return qb;
+    };
+
+    // 1) Resumen general
+    const [summaryRow, dayRows, paymentRows] = await Promise.all([
+      base()
+        .select('COUNT(*)', 'totalOrders')
+        .addSelect('COALESCE(SUM(order.total), 0)', 'totalAmount')
+        .getRawOne<SalesSummaryRow>(),
+
+      // 2) Ventas por día (fecha local en el servidor)
+      base()
+        .select(`TO_CHAR(order.created_at, 'YYYY-MM-DD')`, 'date')
+        .addSelect('COUNT(*)', 'orders')
+        .addSelect('COALESCE(SUM(order.total), 0)', 'amount')
+        .groupBy(`TO_CHAR(order.created_at, 'YYYY-MM-DD')`)
+        .orderBy('date', 'DESC')
+        .getRawMany<SalesByDayRow>(),
+
+      // 3) Desglose por método de pago
+      base()
+        .innerJoin('order.payment', 'payment')
+        .select('payment.method', 'method')
+        .addSelect('COUNT(*)', 'orders')
+        .addSelect('COALESCE(SUM(order.total), 0)', 'amount')
+        .groupBy('payment.method')
+        .getRawMany<SalesByPaymentRow>(),
+    ]);
+
+    // 4) Top productos por monto (desde el snapshot de order_items), con rango
+    const topQb = this.ordersRepository
+      .createQueryBuilder('order')
+      .innerJoin(OrderItem, 'item', 'item.order_id = order.id')
+      .where('order.status IN (:...statuses)', { statuses: paidStatuses });
+    if (query.from) {
+      topQb.andWhere('order.created_at >= :from', {
+        from: new Date(query.from),
+      });
+    }
+    if (query.to) {
+      topQb.andWhere('order.created_at <= :to', { to: new Date(query.to) });
+    }
+    const topProducts = await topQb
+      .select('item.product_id', 'productId')
+      .addSelect('item.product_name', 'productName')
+      .addSelect('SUM(item.quantity)', 'quantity')
+      .addSelect('SUM(item.subtotal)', 'amount')
+      .groupBy('item.product_id')
+      .addGroupBy('item.product_name')
+      .orderBy('amount', 'DESC')
+      .limit(topLimit)
+      .getRawMany<SalesTopProductRow>();
+
+    const totalOrders = Number(summaryRow?.totalOrders ?? 0);
+    const totalAmount = Number(summaryRow?.totalAmount ?? 0);
+
+    return {
+      range: { from: query.from ?? null, to: query.to ?? null },
+      summary: {
+        totalOrders,
+        totalAmount,
+        averageTicket: totalOrders > 0 ? totalAmount / totalOrders : 0,
+      },
+      byDay: (dayRows ?? []).map((r) => ({
+        date: r.date,
+        orders: Number(r.orders),
+        amount: Number(r.amount),
+      })),
+      topProducts: (topProducts ?? []).map((r) => ({
+        productId: r.productId,
+        productName: r.productName,
+        quantity: Number(r.quantity),
+        amount: Number(r.amount),
+      })),
+      byPaymentMethod: (paymentRows ?? []).map((r) => ({
+        method: r.method as PaymentMethod,
+        orders: Number(r.orders),
+        amount: Number(r.amount),
+      })),
+    };
   }
 
   /** Detalle de un pedido (dueño, ADMIN o DELIVERY). */

@@ -387,6 +387,7 @@ El checkout convierte el carrito en un pedido: valida el stock real en ese momen
 | `POST` | `/api/orders/:id/deliver` | ADMIN/DELIVERY | **Confirmar la entrega** (endpoint único del repartidor) |
 | `GET` | `/api/orders/deliveries/me` | ADMIN/DELIVERY | **Reporte de mis entregas** con resumen agregado |
 | `GET` | `/api/orders/deliveries` | ADMIN | Reporte de entregas de cualquier repartidor (`?userId=`) |
+| `GET` | `/api/orders/report/sales` | **Solo ADMIN** | **Reporte de ventas** (resumen, por día, top productos, por método de pago) |
 | `PATCH` | `/api/orders/:id/status` | Según rol | Cambiar estado (ver abajo) |
 
 ```bash
@@ -476,6 +477,25 @@ curl -X POST http://localhost:3000/api/orders/ID_PEDIDO/deliver \
 > **La dirección es fija al confirmar:** si el pedido incluye `addressId`, se guarda una copia (`shippingAddress`) en el pedido. Editar o borrar la dirección de la libreta después no afecta al pedido ya creado.
 
 > **Quién entregó:** al marcar `DELIVERED` (vía `/deliver` o `PATCH status`), el pedido queda asociado al usuario que confirmó la entrega (`deliveredBy`).
+
+**Reporte de ventas** (`GET /api/orders/report/sales`, **solo ADMIN**): métricas globales del negocio para el panel de administración. Cuenta como venta todo pedido pagado o en proceso (`PAID → DELIVERED`); quedan fuera `PENDING` (pago sin confirmar) y `CANCELLED`. Filtros: `?from=&to=&topLimit=`.
+
+```bash
+curl "http://localhost:3000/api/orders/report/sales?from=2026-08-01T00:00:00.000Z&topLimit=5" \
+  -H "Authorization: Bearer TOKEN_ADMIN"
+```
+
+**Respuesta `200 OK`:**
+
+```json
+{
+  "range": { "from": "2026-08-01T00:00:00.000Z", "to": null },
+  "summary": { "totalOrders": 42, "totalAmount": 385.2, "averageTicket": 9.17 },
+  "byDay": [{ "date": "2026-08-08", "orders": 12, "amount": 110.4 }],
+  "topProducts": [{ "productId": "…", "productName": "Manzana Roja", "quantity": 28, "amount": 55.7 }],
+  "byPaymentMethod": [{ "method": "CREDIT_CARD", "orders": 30, "amount": 280.1 }]
+}
+```
 
 **Reporte de entregas** (`GET /api/orders/deliveries/me`): el repartidor ve su historial paginado de entregas con un **resumen agregado** (total entregado, monto cobrado y entregas de hoy). Filtros opcionales: `?page=&limit=&from=&to=`. El ADMIN puede ver las entregas de cualquier repartidor con `GET /api/orders/deliveries?userId=ID`.
 
@@ -647,4 +667,5 @@ test/                     # Tests e2e
 - [x] Carrito de compras (agregar / actualizar / quitar items)
 - [x] Pedidos y pagos (checkout con pago simulado y ciclo de estados)
 - [x] Direcciones de envío (libreta por usuario + snapshot inmutable en el pedido)
+- [x] Reporte de ventas y entregas (solo ADMIN / repartidor)
 - [ ] Pasarela de pago real (Stripe / Mercado Pago / Transbank)

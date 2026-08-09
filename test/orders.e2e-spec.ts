@@ -617,6 +617,47 @@ describe('Orders (e2e)', () => {
     expect(body.summary.todayAmount).toBeGreaterThan(0);
   });
 
+  it('GET /api/orders/report/sales como ADMIN → 200 con métricas agregadas', async () => {
+    // Hay pedidos pagados de tests anteriores (tarjetas, transferencias)
+    const res = await request(app.getHttpServer())
+      .get('/api/orders/report/sales')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+
+    const body = res.body as {
+      summary: {
+        totalOrders: number;
+        totalAmount: number;
+        averageTicket: number;
+      };
+      byDay: { date: string; orders: number; amount: number }[];
+      topProducts: { productName: string; quantity: number; amount: number }[];
+      byPaymentMethod: { method: string; orders: number; amount: number }[];
+    };
+
+    expect(body.summary.totalOrders).toBeGreaterThan(0);
+    expect(body.summary.totalAmount).toBeGreaterThan(0);
+    expect(body.summary.averageTicket).toBeGreaterThan(0);
+    expect(body.byDay.length).toBeGreaterThan(0);
+    expect(body.topProducts.length).toBeGreaterThan(0);
+    expect(body.topProducts[0].productName).toBe('Producto Pedidos');
+    expect(body.byPaymentMethod.length).toBeGreaterThan(0);
+  });
+
+  it('GET /api/orders/report/sales como CUSTOMER → 403', async () => {
+    await request(app.getHttpServer())
+      .get('/api/orders/report/sales')
+      .set('Authorization', `Bearer ${customerToken}`)
+      .expect(403);
+  });
+
+  it('GET /api/orders/report/sales como DELIVERY → 403', async () => {
+    await request(app.getHttpServer())
+      .get('/api/orders/report/sales')
+      .set('Authorization', `Bearer ${deliveryToken}`)
+      .expect(403);
+  });
+
   it('GET /api/orders/deliveries como CUSTOMER → 403', async () => {
     await request(app.getHttpServer())
       .get('/api/orders/deliveries')

@@ -22,8 +22,13 @@ import { UserRole } from '../users/user.entity';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { ListDeliveriesDto } from './dto/list-deliveries.dto';
 import { ListOrdersDto } from './dto/list-orders.dto';
+import { SalesReportDto } from './dto/sales-report.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
-import type { DeliveriesReport, OrderResponse } from './orders.service';
+import type {
+  DeliveriesReport,
+  OrderResponse,
+  SalesReport,
+} from './orders.service';
 import { OrdersService } from './orders.service';
 
 @ApiTags('orders')
@@ -85,6 +90,18 @@ export class OrdersController {
     @Query() query: ListDeliveriesDto,
   ): Promise<DeliveriesReport> {
     return this.ordersService.findDeliveries(user, query);
+  }
+
+  @Get('report/sales')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({
+    summary: 'Reporte de ventas (solo ADMIN)',
+    description:
+      'Métricas globales: resumen (pedidos, monto, ticket promedio), ventas por día, top productos y desglose por método de pago. Filtros: from, to, topLimit. Cuenta ventas pagadas o en proceso (PAID → DELIVERED).',
+  })
+  salesReport(@Query() query: SalesReportDto): Promise<SalesReport> {
+    return this.ordersService.getSalesReport(query);
   }
 
   @Get()

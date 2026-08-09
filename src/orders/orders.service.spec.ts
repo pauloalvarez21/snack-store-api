@@ -568,6 +568,119 @@ describe('OrdersService', () => {
     });
   });
 
+  describe('getSalesReport', () => {
+    it('devuelve resumen, ventas por día, top productos y desglose por método', async () => {
+      // Cada createQueryBuilder devuelve un chain; controlamos las respuestas
+      // en orden: summary (getRawOne), byDay (getRawMany), payment (getRawMany),
+      // topProducts (getRawMany)
+      const makeChain = () => {
+        const chain = {
+          where: jest.fn().mockReturnThis(),
+          andWhere: jest.fn().mockReturnThis(),
+          innerJoin: jest.fn().mockReturnThis(),
+          select: jest.fn().mockReturnThis(),
+          addSelect: jest.fn().mockReturnThis(),
+          groupBy: jest.fn().mockReturnThis(),
+          addGroupBy: jest.fn().mockReturnThis(),
+          orderBy: jest.fn().mockReturnThis(),
+          limit: jest.fn().mockReturnThis(),
+          getRawOne: jest.fn(),
+          getRawMany: jest.fn(),
+        };
+        return chain;
+      };
+
+      const summaryChain = makeChain();
+      summaryChain.getRawOne.mockResolvedValue({
+        totalOrders: '3',
+        totalAmount: '50',
+      });
+
+      const dayChain = makeChain();
+      dayChain.getRawMany.mockResolvedValue([
+        { date: '2026-08-08', orders: '2', amount: '34' },
+        { date: '2026-08-07', orders: '1', amount: '16' },
+      ]);
+
+      const paymentChain = makeChain();
+      paymentChain.getRawMany.mockResolvedValue([
+        { method: 'CREDIT_CARD', orders: '2', amount: '34' },
+        { method: 'CASH_ON_DELIVERY', orders: '1', amount: '16' },
+      ]);
+
+      const topChain = makeChain();
+      topChain.getRawMany.mockResolvedValue([
+        {
+          productId,
+          productName: 'Manzana',
+          quantity: '5',
+          amount: '34',
+        },
+      ]);
+
+      ordersRepository.createQueryBuilder
+        .mockReturnValueOnce(summaryChain)
+        .mockReturnValueOnce(dayChain)
+        .mockReturnValueOnce(paymentChain)
+        .mockReturnValueOnce(topChain);
+
+      const result = await service.getSalesReport({});
+
+      expect(result.summary.totalOrders).toBe(3);
+      expect(result.summary.totalAmount).toBe(50);
+      expect(result.summary.averageTicket).toBeCloseTo(16.67, 2);
+      expect(result.byDay).toHaveLength(2);
+      expect(result.byDay[0].date).toBe('2026-08-08');
+      expect(result.byPaymentMethod[0].method).toBe('CREDIT_CARD');
+      expect(result.topProducts).toHaveLength(1);
+      expect(result.topProducts[0].productName).toBe('Manzana');
+      expect(result.topProducts[0].amount).toBe(34);
+    });
+
+    it('devuelve ceros si no hay ventas', async () => {
+      const makeChain = () => {
+        const chain = {
+          where: jest.fn().mockReturnThis(),
+          andWhere: jest.fn().mockReturnThis(),
+          innerJoin: jest.fn().mockReturnThis(),
+          select: jest.fn().mockReturnThis(),
+          addSelect: jest.fn().mockReturnThis(),
+          groupBy: jest.fn().mockReturnThis(),
+          addGroupBy: jest.fn().mockReturnThis(),
+          orderBy: jest.fn().mockReturnThis(),
+          limit: jest.fn().mockReturnThis(),
+          getRawOne: jest.fn(),
+          getRawMany: jest.fn(),
+        };
+        return chain;
+      };
+
+      const summaryChain = makeChain();
+      summaryChain.getRawOne.mockResolvedValue(undefined);
+      const dayChain = makeChain();
+      dayChain.getRawMany.mockResolvedValue([]);
+      const paymentChain = makeChain();
+      paymentChain.getRawMany.mockResolvedValue([]);
+      const topChain = makeChain();
+      topChain.getRawMany.mockResolvedValue([]);
+
+      ordersRepository.createQueryBuilder
+        .mockReturnValueOnce(summaryChain)
+        .mockReturnValueOnce(dayChain)
+        .mockReturnValueOnce(paymentChain)
+        .mockReturnValueOnce(topChain);
+
+      const result = await service.getSalesReport({});
+
+      expect(result.summary.totalOrders).toBe(0);
+      expect(result.summary.totalAmount).toBe(0);
+      expect(result.summary.averageTicket).toBe(0);
+      expect(result.byDay).toEqual([]);
+      expect(result.topProducts).toEqual([]);
+      expect(result.byPaymentMethod).toEqual([]);
+    });
+  });
+
   describe('deliver', () => {
     it('el DELIVERY confirma la entrega y registra quién la hizo', async () => {
       ordersRepository.update.mockResolvedValue({ affected: 1 });
