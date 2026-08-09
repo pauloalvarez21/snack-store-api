@@ -358,6 +358,16 @@
             }
           },
           {
+            "name": "inStock",
+            "required": false,
+            "in": "query",
+            "description": "Filtrar por disponibilidad: \"true\" o \"false\"",
+            "schema": {
+              "example": "true",
+              "type": "string"
+            }
+          },
+          {
             "name": "search",
             "required": false,
             "in": "query",
@@ -515,6 +525,188 @@
         "summary": "Eliminar producto (solo ADMIN)",
         "tags": [
           "products"
+        ]
+      }
+    },
+    "/api/inventory": {
+      "get": {
+        "operationId": "InventoryController_findAll",
+        "parameters": [
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "default": 1,
+              "example": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20,
+              "example": 20,
+              "type": "number"
+            }
+          },
+          {
+            "name": "search",
+            "required": false,
+            "in": "query",
+            "description": "Búsqueda por nombre o SKU del producto (case-insensitive)",
+            "schema": {
+              "minLength": 1,
+              "maxLength": 100,
+              "example": "manzana",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Listar inventario con producto (paginado, solo ADMIN)",
+        "tags": [
+          "inventory"
+        ]
+      }
+    },
+    "/api/inventory/{productId}": {
+      "get": {
+        "operationId": "InventoryController_findOne",
+        "parameters": [
+          {
+            "name": "productId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Ver inventario de un producto (solo ADMIN)",
+        "tags": [
+          "inventory"
+        ]
+      },
+      "patch": {
+        "operationId": "InventoryController_update",
+        "parameters": [
+          {
+            "name": "productId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateInventoryDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Fijar stock de un producto (crea el registro si no existe)",
+        "tags": [
+          "inventory"
+        ]
+      }
+    },
+    "/api/inventory/{productId}/adjust": {
+      "post": {
+        "operationId": "InventoryController_adjust",
+        "parameters": [
+          {
+            "name": "productId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdjustInventoryDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Ajustar stock por delta (suma o resta; no puede quedar negativo)",
+        "tags": [
+          "inventory"
         ]
       }
     },
@@ -860,6 +1052,44 @@
             "example": false
           }
         }
+      },
+      "UpdateInventoryDto": {
+        "type": "object",
+        "properties": {
+          "stockQuantity": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 99999999,
+            "description": "Cantidad exacta en stock (valor absoluto)",
+            "example": 50
+          },
+          "minStockLevel": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 99999999,
+            "description": "Nivel mínimo que dispara LOW_STOCK",
+            "example": 5
+          },
+          "expirationDate": {
+            "type": "string",
+            "nullable": true,
+            "description": "Fecha de vencimiento (enviar null para limpiar)",
+            "example": "2026-08-20"
+          }
+        }
+      },
+      "AdjustInventoryDto": {
+        "type": "object",
+        "properties": {
+          "quantity": {
+            "type": "number",
+            "description": "Cantidad a sumar (positiva) o restar (negativa). El total no puede quedar negativo.",
+            "example": 5
+          }
+        },
+        "required": [
+          "quantity"
+        ]
       }
     }
   }

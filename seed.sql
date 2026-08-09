@@ -51,3 +51,36 @@ INSERT INTO products (id, category_id, sku, name, slug, description, price, sale
   ('8b1a2d5e-0001-4f00-8000-000000000025', 'f0000000-0000-4000-8000-000000000013', 'LENT-001', 'Lentejas',           'lentejas',           'Lentejas secas seleccionadas, ricas en hierro.', 3.20, NULL, 'kg', false, true, 'https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=400&h=400&fit=crop&q=80', true),
   ('8b1a2d5e-0001-4f00-8000-000000000026', 'f0000000-0000-4000-8000-000000000013', 'ATUN-001', 'Atún en Lata',       'atun-en-lata',       'Atún en aceite vegetal, envasado en su punto.', 2.80, NULL, 'lata', false, false, NULL, true)
 ON CONFLICT (id) DO UPDATE SET image_url = EXCLUDED.image_url;
+
+-- ===== Inventario =====
+-- Stock variado a propósito: 2 productos agotados (LIMN-001, GOMI-001) y 3 en
+-- nivel bajo (FRES-001, QUES-002, MARQ-001) para que el front pueda probar los
+-- estados OUT_OF_STOCK / LOW_STOCK / IN_STOCK.
+INSERT INTO inventory (product_id, stock_quantity, min_stock_level) VALUES
+  ('8b1a2d5e-0001-4f00-8000-000000000001', 50,  5),
+  ('8b1a2d5e-0001-4f00-8000-000000000002', 30,  5),
+  ('8b1a2d5e-0001-4f00-8000-000000000003', 40,  5),
+  ('8b1a2d5e-0001-4f00-8000-000000000004', 4,   5),
+  ('8b1a2d5e-0001-4f00-8000-000000000005', 0,   5),
+  ('8b1a2d5e-0001-4f00-8000-000000000006', 25,  5),
+  ('8b1a2d5e-0001-4f00-8000-000000000007', 15,  5),
+  ('8b1a2d5e-0001-4f00-8000-000000000008', 35,  5),
+  ('8b1a2d5e-0001-4f00-8000-000000000009', 60,  5),
+  ('8b1a2d5e-0001-4f00-8000-000000000010', 20,  5),
+  ('8b1a2d5e-0001-4f00-8000-000000000011', 10,  5),
+  ('8b1a2d5e-0001-4f00-8000-000000000012', 5,   5),
+  ('8b1a2d5e-0001-4f00-8000-000000000013', 45,  5),
+  ('8b1a2d5e-0001-4f00-8000-000000000014', 28,  5),
+  ('8b1a2d5e-0001-4f00-8000-000000000015', 3,   5),
+  ('8b1a2d5e-0001-4f00-8000-000000000016', 40,  5),
+  ('8b1a2d5e-0001-4f00-8000-000000000017', 55,  5),
+  ('8b1a2d5e-0001-4f00-8000-000000000018', 18,  5),
+  ('8b1a2d5e-0001-4f00-8000-000000000019', 22,  5),
+  ('8b1a2d5e-0001-4f00-8000-000000000020', 0,   5),
+  ('8b1a2d5e-0001-4f00-8000-000000000021', 14,  5),
+  ('8b1a2d5e-0001-4f00-8000-000000000022', 90,  5),
+  ('8b1a2d5e-0001-4f00-8000-000000000023', 70,  5),
+  ('8b1a2d5e-0001-4f00-8000-000000000024', 33,  5),
+  ('8b1a2d5e-0001-4f00-8000-000000000025', 26,  5),
+  ('8b1a2d5e-0001-4f00-8000-000000000026', 48,  5)
+ON CONFLICT (product_id) DO NOTHING;

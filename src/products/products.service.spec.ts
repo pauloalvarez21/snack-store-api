@@ -88,15 +88,35 @@ describe('ProductsService', () => {
       );
       expect(result.data[0].price).toBe(2.5);
       expect(result.total).toBe(1);
+      // Sin registro de inventario → agotado
+      expect(result.data[0].inStock).toBe(false);
+      expect(result.data[0].stockStatus).toBe('OUT_OF_STOCK');
+    });
+
+    it('filtra por disponibilidad con inStock=true', async () => {
+      const qb = {
+        leftJoinAndSelect: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        skip: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        getManyAndCount: jest.fn().mockResolvedValue([[], 0]),
+      };
+      productsRepository.createQueryBuilder.mockReturnValue(qb);
+
+      await service.findAll({ inStock: 'true', page: 1, limit: 20 });
+
+      expect(qb.andWhere).toHaveBeenCalledWith('inventory.stockQuantity > 0');
     });
   });
 
   describe('findOne', () => {
-    it('devuelve el producto con su categoría y precios numéricos', async () => {
+    it('devuelve el producto con su categoría, inventario y precios numéricos', async () => {
       productsRepository.findOne.mockResolvedValue({
         ...product,
         categoryId: 'cat-1',
         category: { id: 'cat-1', name: 'Frutas', slug: 'frutas' },
+        inventory: { stockQuantity: '10', minStockLevel: '5' },
         price: '2.50',
         salePrice: '1.99',
       });
@@ -105,11 +125,25 @@ describe('ProductsService', () => {
 
       expect(productsRepository.findOne).toHaveBeenCalledWith({
         where: { id: product.id },
-        relations: { category: true },
+        relations: { category: true, inventory: true },
       });
       expect(result.price).toBe(2.5);
       expect(result.salePrice).toBe(1.99);
       expect(result.category?.id).toBe('cat-1');
+      expect(result.inStock).toBe(true);
+      expect(result.stockStatus).toBe('IN_STOCK');
+    });
+
+    it('marca LOW_STOCK cuando el stock está en o bajo el nivel mínimo', async () => {
+      productsRepository.findOne.mockResolvedValue({
+        ...product,
+        inventory: { stockQuantity: '3', minStockLevel: '5' },
+      });
+
+      const result = await service.findOne(product.id);
+
+      expect(result.inStock).toBe(true);
+      expect(result.stockStatus).toBe('LOW_STOCK');
     });
 
     it('lanza NotFoundException si el producto no existe', async () => {

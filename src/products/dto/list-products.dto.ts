@@ -43,6 +43,14 @@ export class ListProductsDto {
   active?: string;
 
   @ApiPropertyOptional({
+    description: 'Filtrar por disponibilidad: "true" o "false"',
+    example: 'true',
+  })
+  @IsOptional()
+  @IsBooleanString({ message: 'inStock debe ser "true" o "false"' })
+  inStock?: string;
+
+  @ApiPropertyOptional({
     description: 'Búsqueda por nombre o SKU (case-insensitive)',
     example: 'manzana',
   })

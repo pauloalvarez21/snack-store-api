@@ -37,10 +37,12 @@ try {
   console.log('✅ Seed aplicado correctamente');
   if (result[0]) console.log(`   Categorías insertadas: ${result[0].rowCount}`);
   if (result[1]) console.log(`   Productos insertados:  ${result[1].rowCount}`);
+  if (result[2]) console.log(`   Inventario insertado:  ${result[2].rowCount}`);
 
   const counts = await client.query(
     `SELECT (SELECT count(*) FROM categories) AS categories,
-            (SELECT count(*) FROM products)   AS products;`,
+            (SELECT count(*) FROM products)   AS products,
+            (SELECT count(*) FROM inventory)  AS inventory;`,
   );
   console.log('   Totales en BD:', JSON.stringify(counts.rows[0]));
 } catch (err) {

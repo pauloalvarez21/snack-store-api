@@ -64,6 +64,34 @@ npm run start:prod
 
 La API queda disponible en `http://localhost:3000` con el prefijo global `/api` y CORS habilitado.
 
+## 🗄️ Datos de ejemplo (seed)
+
+El esquema está en `schema.sql` y hay un juego de datos demo reutilizable:
+
+```bash
+# 1. Aplicar el esquema una vez (SQL Editor de Neon, pgAdmin o psql): schema.sql
+
+# 2. Poblar categorías y productos (13 categorías + 26 productos con fotos reales de Unsplash;
+#    24 con imagen y 2 sin imagen para probar el caso "sin imagen" en el front)
+node --env-file=.env scripts/seed.mjs
+
+# 3. Crear usuarios demo por rol (CUSTOMER / ADMIN / DELIVERY) — idempotente
+node --env-file=.env scripts/seed-users.mjs
+```
+
+Los seeds son **idempotentes** (`ON CONFLICT DO NOTHING`): se pueden re-ejecutar sin duplicar datos.
+Al re-ejecutar `seed.mjs`, en productos solo se refresca `image_url`.
+
+### 👤 Usuarios demo
+
+| Rol | Email | Contraseña |
+|-----|-------|------------|
+| CUSTOMER | `cliente@snack.store` | `Demo123!` |
+| ADMIN | `admin@snack.store` | `Demo123!` |
+| DELIVERY | `repartidor@snack.store` | `Demo123!` |
+
+> Tabla completa y detalles de uso en [`TEST_USERS.md`](./TEST_USERS.md).
+
 ## 📖 Documentación de la API (Swagger / OpenAPI)
 
 La API expone documentación interactiva generada con `@nestjs/swagger`:
@@ -248,6 +276,67 @@ curl -X POST http://localhost:3000/api/products \
 
 > Notas: `salePrice` debe ser menor que `price`. Enviar `null` en campos opcionales los limpia (p. ej. `salePrice` o `imageUrl`).
 
+### 📤 Subida de imágenes — `/api/uploads/images`
+
+`POST /api/uploads/images` (multipart/form-data, **ADMIN**): sube una imagen de producto, la guarda en `uploads/` y devuelve la `imageUrl` pública lista para enviarse al crear o editar un producto. Es **opcional**: los productos pueden crearse sin imagen.
+
+- Campo del formulario: `image` (jpg, png, webp, gif o avif · máx. 5 MB)
+- Se valida el mimetype **y la firma real del archivo** (magic bytes)
+- La API sirve los archivos en `http://localhost:3000/uploads/<archivo>` con header `X-Content-Type-Options: nosniff`
+
+```bash
+curl -X POST http://localhost:3000/api/uploads/images \
+  -H "Authorization: Bearer TU_TOKEN_ADMIN" \
+  -F "image=@/ruta/manzana.jpg"
+```
+
+**Respuesta `201 Created`:**
+
+```json
+{
+  "imageUrl": "http://localhost:3000/uploads/3f2a9c….png",
+  "fileName": "3f2a9c….png",
+  "mimeType": "image/jpeg",
+  "size": 48213
+}
+```
+
+> Flujo típico del front: 1) subir la imagen → 2) usar la `imageUrl` devuelta como `imageUrl` al crear/editar el producto.
+
+### 📦 Inventario — `/api/inventory`
+
+Las **cantidades exactas de stock son privadas** (solo ADMIN). El catálogo público expone la **disponibilidad derivada** de cada producto: `inStock` (boolean) + `stockStatus` (`IN_STOCK` / `LOW_STOCK` / `OUT_OF_STOCK`), calculada a partir del stock y del nivel mínimo.
+
+```bash
+# Productos públicos: incluyen inStock + stockStatus (sin cantidades exactas)
+curl "http://localhost:3000/api/products?inStock=true"
+
+# Inventario (ADMIN) — listar con stock exacto
+curl http://localhost:3000/api/inventory \
+  -H "Authorization: Bearer TU_TOKEN_ADMIN"
+
+# Fijar stock (crea el registro si no existe)
+curl -X PATCH http://localhost:3000/api/inventory/PRODUCT_ID \
+  -H "Authorization: Bearer TU_TOKEN_ADMIN" \
+  -H "Content-Type: application/json" \
+  -d '{"stockQuantity": 50, "minStockLevel": 5}'
+
+# Ajustar por delta (suma o resta; no puede quedar negativo)
+curl -X POST http://localhost:3000/api/inventory/PRODUCT_ID/adjust \
+  -H "Authorization: Bearer TU_TOKEN_ADMIN" \
+  -H "Content-Type: application/json" \
+  -d '{"quantity": -3}'
+```
+
+| Método | Endpoint | Acceso | Descripción |
+|--------|----------|--------|-------------|
+| `GET` | `/api/inventory` | ADMIN | Lista paginada con producto y stock (`?page=&limit=&search=`) |
+| `GET` | `/api/inventory/:productId` | ADMIN | Stock exacto de un producto |
+| `PATCH` | `/api/inventory/:productId` | ADMIN | Fijar stock (upsert) |
+| `POST` | `/api/inventory/:productId/adjust` | ADMIN | Ajustar por delta (200) |
+
+> El seed carga stock variado a propósito: 2 productos agotados y 3 en nivel bajo para probar los tres estados en el front.
+
 ## 🧪 Tests
 
 ```bash
@@ -291,6 +380,18 @@ src/
 │   ├── products.service.ts
 │   ├── products.controller.ts
 │   └── products.module.ts
+├── uploads/              # Subida de imágenes de producto (solo ADMIN)
+│   ├── uploads.controller.ts
+│   ├── uploads.module.ts
+│   ├── uploads.constants.ts
+│   └── image.validator.ts  # Valida la firma real (magic bytes) de la imagen
+├── inventory/            # Inventario y disponibilidad (solo ADMIN)
+│   ├── dto/
+│   ├── inventory.entity.ts
+│   ├── inventory.service.ts
+│   ├── inventory.controller.ts
+│   ├── inventory.module.ts
+│   └── inventory.utils.ts   # Derivación de IN_STOCK / LOW_STOCK / OUT_OF_STOCK
 ├── users/                # Entidad User y módulo de usuarios
 │   ├── user.entity.ts
 │   └── users.module.ts
@@ -298,6 +399,8 @@ src/
 ├── app.module.ts         # ConfigModule + TypeOrmModule
 └── main.ts               # Bootstrap (prefijo /api, CORS, ValidationPipe)
 schema.sql                # Esquema de la base de datos
+seed.sql                  # Datos demo (categorías y productos con fotos)
+scripts/                  # Scripts auxiliares (seed, usuarios demo, openapi)
 test/                     # Tests e2e
 ```
 
@@ -311,7 +414,7 @@ test/                     # Tests e2e
 
 - [x] Autenticación (registro / login / JWT)
 - [x] Categorías y productos (CRUD con roles)
-- [ ] Inventario
+- [x] Inventario (stock con disponibilidad pública y gestión solo ADMIN)
 - [ ] Carrito de compras
 - [ ] Pedidos y pagos
 - [ ] Direcciones de envío

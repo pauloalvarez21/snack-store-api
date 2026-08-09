@@ -4,10 +4,12 @@ import {
   Entity,
   JoinColumn,
   ManyToOne,
+  OneToOne,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
 import { Category } from '../categories/category.entity';
+import { Inventory } from '../inventory/inventory.entity';
 
 @Entity('products')
 export class Product {
@@ -56,6 +58,10 @@ export class Product {
 
   @Column({ name: 'image_url', type: 'text', nullable: true })
   imageUrl: string | null;
+
+  // Relación 1:1 con inventario (la FK vive en inventory.product_id)
+  @OneToOne(() => Inventory, (inventory) => inventory.product)
+  inventory?: Inventory | null;
 
   @Column({ name: 'is_active', type: 'boolean', default: true })
   isActive: boolean;

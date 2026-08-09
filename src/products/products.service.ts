@@ -13,6 +13,7 @@ import {
   getPaginationOptions,
   Paginated,
 } from '../common/pagination';
+import { computeStockStatus, StockStatus } from '../inventory/inventory.utils';
 import { slugify } from '../common/slugify';
 import { CreateProductDto } from './dto/create-product.dto';
 import { ListProductsDto } from './dto/list-products.dto';
@@ -33,12 +34,21 @@ export interface ProductResponse {
   isPerishable: boolean;
   isOrganic: boolean;
   imageUrl: string | null;
+  /** Disponibilidad derivada del inventario: sin cantidades exactas (público) */
+  inStock: boolean;
+  stockStatus: StockStatus;
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
 
 function toResponse(product: Product): ProductResponse {
+  const stockQuantity = product.inventory
+    ? Number(product.inventory.stockQuantity)
+    : 0;
+  const minStockLevel = product.inventory
+    ? Number(product.inventory.minStockLevel)
+    : 0;
   return {
     id: product.id,
     categoryId: product.categoryId,
@@ -59,6 +69,8 @@ function toResponse(product: Product): ProductResponse {
     isPerishable: product.isPerishable,
     isOrganic: product.isOrganic,
     imageUrl: product.imageUrl,
+    inStock: stockQuantity > 0,
+    stockStatus: computeStockStatus(stockQuantity, minStockLevel),
     isActive: product.isActive,
     createdAt: product.createdAt,
     updatedAt: product.updatedAt,
@@ -82,7 +94,8 @@ export class ProductsService {
 
     const qb = this.productsRepository
       .createQueryBuilder('product')
-      .leftJoinAndSelect('product.category', 'category');
+      .leftJoinAndSelect('product.category', 'category')
+      .leftJoinAndSelect('product.inventory', 'inventory');
 
     if (query.categoryId !== undefined) {
       qb.andWhere('product.categoryId = :categoryId', {
@@ -93,6 +106,13 @@ export class ProductsService {
       qb.andWhere('product.isActive = :active', {
         active: query.active === 'true',
       });
+    }
+    if (query.inStock !== undefined) {
+      qb.andWhere(
+        query.inStock === 'true'
+          ? 'inventory.stockQuantity > 0'
+          : '(inventory.id IS NULL OR inventory.stockQuantity <= 0)',
+      );
     }
     if (query.search !== undefined) {
       qb.andWhere('(product.name ILIKE :search OR product.sku ILIKE :search)', {
@@ -112,7 +132,7 @@ export class ProductsService {
   async findOne(id: string): Promise<ProductResponse> {
     const product = await this.productsRepository.findOne({
       where: { id },
-      relations: { category: true },
+      relations: { category: true, inventory: true },
     });
     if (!product) {
       throw new NotFoundException('Producto no encontrado');
