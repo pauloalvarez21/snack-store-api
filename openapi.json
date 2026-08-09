@@ -1425,6 +1425,69 @@
         ]
       }
     },
+    "/api/orders/report/sales/export": {
+      "get": {
+        "description": "Descarga el reporte de ventas como archivo CSV (compatible con Excel) con las mismas métricas y filtros que /report/sales: resumen, ventas por día, top productos y desglose por método de pago.",
+        "operationId": "OrdersController_salesReportExport",
+        "parameters": [
+          {
+            "name": "from",
+            "required": false,
+            "in": "query",
+            "description": "Incluir ventas desde esta fecha (ISO 8601)",
+            "schema": {
+              "example": "2026-08-01T00:00:00.000Z",
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "required": false,
+            "in": "query",
+            "description": "Incluir ventas hasta esta fecha (ISO 8601)",
+            "schema": {
+              "example": "2026-08-31T23:59:59.000Z",
+              "type": "string"
+            }
+          },
+          {
+            "name": "topLimit",
+            "required": false,
+            "in": "query",
+            "description": "Cantidad de productos en el top (por monto)",
+            "schema": {
+              "minimum": 1,
+              "maximum": 50,
+              "default": 10,
+              "example": 10,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Archivo CSV",
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Exportar reporte de ventas a CSV (solo ADMIN)",
+        "tags": [
+          "orders"
+        ]
+      }
+    },
     "/api/orders/{id}": {
       "get": {
         "operationId": "OrdersController_findOne",

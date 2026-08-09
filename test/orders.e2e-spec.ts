@@ -658,6 +658,41 @@ describe('Orders (e2e)', () => {
       .expect(403);
   });
 
+  it('GET /api/orders/report/sales/export como ADMIN → 200 CSV con secciones', async () => {
+    const res = await request(app.getHttpServer())
+      .get('/api/orders/report/sales/export')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200)
+      .expect('Content-Type', /text\/csv/);
+
+    expect(res.headers['content-disposition']).toContain('attachment');
+    expect(res.headers['content-disposition']).toContain('.csv');
+    // BOM UTF-8 para Excel
+    expect(res.text.startsWith('\uFEFF')).toBe(true);
+    expect(res.text).toContain('Reporte de ventas');
+    expect(res.text).toContain('Resumen');
+    expect(res.text).toContain('Pedidos vendidos');
+    expect(res.text).toContain('Ventas por día');
+    expect(res.text).toContain('Fecha,Pedidos,Monto');
+    expect(res.text).toContain('Top productos (por monto)');
+    expect(res.text).toContain('Desglose por método de pago');
+    expect(res.text).toContain('Producto Pedidos');
+  });
+
+  it('GET /api/orders/report/sales/export como CUSTOMER → 403', async () => {
+    await request(app.getHttpServer())
+      .get('/api/orders/report/sales/export')
+      .set('Authorization', `Bearer ${customerToken}`)
+      .expect(403);
+  });
+
+  it('GET /api/orders/report/sales/export como DELIVERY → 403', async () => {
+    await request(app.getHttpServer())
+      .get('/api/orders/report/sales/export')
+      .set('Authorization', `Bearer ${deliveryToken}`)
+      .expect(403);
+  });
+
   it('GET /api/orders/deliveries como CUSTOMER → 403', async () => {
     await request(app.getHttpServer())
       .get('/api/orders/deliveries')

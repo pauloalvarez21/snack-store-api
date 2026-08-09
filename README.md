@@ -388,6 +388,7 @@ El checkout convierte el carrito en un pedido: valida el stock real en ese momen
 | `GET` | `/api/orders/deliveries/me` | ADMIN/DELIVERY | **Reporte de mis entregas** con resumen agregado |
 | `GET` | `/api/orders/deliveries` | ADMIN | Reporte de entregas de cualquier repartidor (`?userId=`) |
 | `GET` | `/api/orders/report/sales` | **Solo ADMIN** | **Reporte de ventas** (resumen, por día, top productos, por método de pago) |
+| `GET` | `/api/orders/report/sales/export` | **Solo ADMIN** | **Exportar el reporte de ventas a CSV** (descarga) |
 | `PATCH` | `/api/orders/:id/status` | Según rol | Cambiar estado (ver abajo) |
 
 ```bash
@@ -495,6 +496,41 @@ curl "http://localhost:3000/api/orders/report/sales?from=2026-08-01T00:00:00.000
   "topProducts": [{ "productId": "…", "productName": "Manzana Roja", "quantity": 28, "amount": 55.7 }],
   "byPaymentMethod": [{ "method": "CREDIT_CARD", "orders": 30, "amount": 280.1 }]
 }
+```
+
+**Exportar a CSV** (`GET /api/orders/report/sales/export`, **solo ADMIN**): descarga el mismo reporte como archivo `.csv` (compatible con Excel: BOM UTF-8 para los acentos y CRLF). Incluye 4 secciones: resumen, ventas por día, top productos y desglose por método de pago. Acepta los mismos filtros (`?from=&to=&topLimit=`).
+
+```bash
+# Descargar el CSV (guarda la respuesta como archivo)
+curl "http://localhost:3000/api/orders/report/sales/export?from=2026-08-01T00:00:00.000Z" \
+  -H "Authorization: Bearer TOKEN_ADMIN" \
+  -o reporte-ventas.csv
+```
+
+**Respuesta `200 OK`:** archivo `text/csv` con header `Content-Disposition: attachment; filename="reporte-ventas-AAAA-MM-DD.csv"`.
+
+```csv
+Reporte de ventas
+Generado,2026-08-08T12:00:00.000Z
+Rango,Desde 2026-08-01T00:00:00.000Z
+
+Resumen
+Metrica,Valor
+Pedidos vendidos,42
+Monto total,385.20
+Ticket promedio,9.17
+
+Ventas por día
+Fecha,Pedidos,Monto
+2026-08-08,12,110.40
+
+Top productos (por monto)
+Producto,Unidades,Monto
+Manzana Roja,28,55.70
+
+Desglose por método de pago
+Metodo,Pedidos,Monto
+CREDIT_CARD,30,280.10
 ```
 
 **Reporte de entregas** (`GET /api/orders/deliveries/me`): el repartidor ve su historial paginado de entregas con un **resumen agregado** (total entregado, monto cobrado y entregas de hoy). Filtros opcionales: `?page=&limit=&from=&to=`. El ADMIN puede ver las entregas de cualquier repartidor con `GET /api/orders/deliveries?userId=ID`.
@@ -639,6 +675,7 @@ src/
 │   ├── payments.service.ts   # Pago simulado (tarjeta/transferencia/contra entrega)
 │   ├── orders.service.ts
 │   ├── orders.controller.ts
+│   ├── sales-csv.ts          # Serializa el reporte de ventas a CSV (export)
 │   └── orders.module.ts
 ├── users/                # Entidad User y módulo de usuarios
 │   ├── user.entity.ts

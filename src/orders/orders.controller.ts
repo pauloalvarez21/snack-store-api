@@ -9,9 +9,17 @@ import {
   Patch,
   Post,
   Query,
+  Res,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiOkResponse,
+  ApiOperation,
+  ApiProduces,
+  ApiTags,
+} from '@nestjs/swagger';
+import type { Response } from 'express';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Roles } from '../auth/roles.decorator';
@@ -30,6 +38,7 @@ import type {
   SalesReport,
 } from './orders.service';
 import { OrdersService } from './orders.service';
+import { buildSalesCsv } from './sales-csv';
 
 @ApiTags('orders')
 @Controller('orders')
@@ -102,6 +111,35 @@ export class OrdersController {
   })
   salesReport(@Query() query: SalesReportDto): Promise<SalesReport> {
     return this.ordersService.getSalesReport(query);
+  }
+
+  @Get('report/sales/export')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({
+    summary: 'Exportar reporte de ventas a CSV (solo ADMIN)',
+    description:
+      'Descarga el reporte de ventas como archivo CSV (compatible con Excel) con las mismas métricas y filtros que /report/sales: resumen, ventas por día, top productos y desglose por método de pago.',
+  })
+  @ApiProduces('text/csv')
+  @ApiOkResponse({
+    description: 'Archivo CSV',
+    schema: { type: 'string', format: 'binary' },
+  })
+  async salesReportExport(
+    @Query() query: SalesReportDto,
+    @Res() res: Response,
+  ): Promise<void> {
+    const report = await this.ordersService.getSalesReport(query);
+    const now = new Date();
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="reporte-ventas-${now
+        .toISOString()
+        .slice(0, 10)}.csv"`,
+    );
+    res.send(buildSalesCsv(report, now));
   }
 
   @Get()
