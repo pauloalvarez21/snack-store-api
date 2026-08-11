@@ -151,6 +151,26 @@ ALTER TABLE orders
     ADD COLUMN IF NOT EXISTS shipping_delivery_notes TEXT,
     ADD COLUMN IF NOT EXISTS delivered_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL;
 
+-- 12. Tokens de sesión (refresh tokens y revocación de access tokens)
+CREATE TABLE refresh_tokens (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    token_hash VARCHAR(64) UNIQUE NOT NULL, -- SHA-256 del token opaco (nunca se guarda el token en claro)
+    expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    revoked_at TIMESTAMP WITH TIME ZONE, -- rotado en refresh / revocado en logout
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_refresh_tokens_user ON refresh_tokens(user_id);
+
+-- Blacklist de access tokens revocados (logout). Las filas vencidas se
+-- eliminan al hacer logout (los access tokens viven pocas horas).
+CREATE TABLE revoked_tokens (
+    jti VARCHAR(64) PRIMARY KEY, -- JWT ID del access token revocado
+    expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Índices recomendados para optimizar búsquedas
 CREATE INDEX idx_products_category ON products(category_id);
 CREATE INDEX idx_products_active ON products(is_active);

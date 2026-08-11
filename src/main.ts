@@ -4,14 +4,52 @@ import { NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import type { Response } from 'express';
+import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { UPLOADS_DIR } from './uploads/uploads.constants';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  const configService = app.get(ConfigService);
 
   app.setGlobalPrefix('api');
-  app.enableCors();
+
+  // Headers de seguridad HTTP (X-Frame-Options, X-Content-Type-Options,
+  // Strict-Transport-Security, CSP, etc.)
+  app.use(
+    helmet({
+      crossOriginResourcePolicy: {
+        // Necesario: el frontend (otro origen) muestra las imágenes de /uploads
+        policy: 'cross-origin',
+      },
+      contentSecurityPolicy: {
+        directives: {
+          defaultSrc: ["'self'"],
+          // Swagger UI (/api/docs) inyecta scripts y estilos inline
+          scriptSrc: ["'self'", "'unsafe-inline'"],
+          styleSrc: ["'self'", "'unsafe-inline'"],
+          imgSrc: ["'self'", 'data:'],
+          fontSrc: ["'self'", 'data:'],
+        },
+      },
+    }),
+  );
+
+  // CORS restringido a los orígenes permitidos (el frontend Angular).
+  // Variable CORS_ORIGINS: lista separada por comas. Default: localhost:4200.
+  const corsOrigins = (
+    configService.get<string>('CORS_ORIGINS') ?? 'http://localhost:4200'
+  )
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+
+  app.enableCors({
+    origin: corsOrigins,
+    methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    credentials: true,
+  });
 
   // Imágenes subidas por el front: se guardan en uploads/ y se sirven en /uploads/...
   app.useStaticAssets(UPLOADS_DIR, {
@@ -48,7 +86,6 @@ async function bootstrap() {
   // UI interactiva en /api/docs · documento JSON en /api/docs-json
   SwaggerModule.setup('api/docs', app, document);
 
-  const configService = app.get(ConfigService);
   await app.listen(Number(configService.get('PORT') ?? 3000));
 }
 void bootstrap();

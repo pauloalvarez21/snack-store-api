@@ -33,16 +33,19 @@ describe('OrdersService', () => {
     id: userId,
     email: 'cliente@x.cl',
     role: UserRole.CUSTOMER,
+    jti: 'jti-customer',
   };
   const admin: RequestUser = {
     id: userId,
     email: 'admin@x.cl',
     role: UserRole.ADMIN,
+    jti: 'jti-admin',
   };
   const delivery: RequestUser = {
     id: userId,
     email: 'repartidor@x.cl',
     role: UserRole.DELIVERY,
+    jti: 'jti-delivery',
   };
 
   const makeOrder = (overrides: Partial<Order> = {}): Order =>
@@ -476,6 +479,7 @@ describe('OrdersService', () => {
         id: 'zzzzzzzz-zzzz-zzzz-zzzz-zzzzzzzzzzzz',
         email: 'otro@x.cl',
         role: UserRole.CUSTOMER,
+        jti: 'jti-stranger',
       };
       ordersRepository.findOne.mockResolvedValue(makeOrder());
 

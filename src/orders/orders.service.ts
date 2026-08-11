@@ -366,10 +366,13 @@ export class OrdersService {
       return order.id;
     });
 
+    // El usuario no interviene en el flujo real (el pedido es suyo por
+    // construcción): solo se usa para el chequeo de propiedad en findOne.
     return this.findOne(orderId, {
       id: userId,
       email: '',
       role: UserRole.CUSTOMER,
+      jti: '',
     });
   }
 

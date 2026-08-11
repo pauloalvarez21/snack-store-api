@@ -9,6 +9,7 @@ jest.setTimeout(60_000);
 
 interface AuthBody {
   access_token: string;
+  refresh_token: string;
   user: {
     id: string;
     email: string;
@@ -17,6 +18,18 @@ interface AuthBody {
     phone: string | null;
     role: string;
   };
+}
+
+/** Extrae el jti (JWT ID) del payload de un access token. */
+function getJti(token: string): string | null {
+  try {
+    const payload = JSON.parse(
+      Buffer.from(token.split('.')[1] ?? '', 'base64url').toString('utf8'),
+    ) as { jti?: unknown };
+    return typeof payload.jti === 'string' ? payload.jti : null;
+  } catch {
+    return null;
+  }
 }
 
 describe('Auth (e2e)', () => {
@@ -94,7 +107,7 @@ describe('Auth (e2e)', () => {
       .expect(400);
   });
 
-  it('POST /api/auth/login → 200 con access_token', async () => {
+  it('POST /api/auth/login → 200 con access_token y refresh_token', async () => {
     const res = await request(app.getHttpServer())
       .post('/api/auth/login')
       .send({ email, password })
@@ -102,7 +115,76 @@ describe('Auth (e2e)', () => {
 
     const body = res.body as AuthBody;
     expect(body.access_token).toBeDefined();
+    expect(body.refresh_token).toBeDefined();
+    expect(typeof body.refresh_token).toBe('string');
     expect(body.user.email).toBe(email);
+  });
+
+  it('POST /api/auth/refresh → 200 rota el refresh token y emite un nuevo par', async () => {
+    const loginRes = await request(app.getHttpServer())
+      .post('/api/auth/login')
+      .send({ email, password })
+      .expect(200);
+    const { access_token, refresh_token } = loginRes.body as AuthBody;
+
+    const res = await request(app.getHttpServer())
+      .post('/api/auth/refresh')
+      .send({ refreshToken: refresh_token })
+      .expect(200);
+
+    const body = res.body as AuthBody;
+    expect(body.access_token).toBeDefined();
+    expect(body.access_token).not.toBe(access_token);
+    expect(body.refresh_token).toBeDefined();
+    expect(body.refresh_token).not.toBe(refresh_token);
+    expect(body.user.email).toBe(email);
+
+    // El token presentado quedó rotado: reutilizarlo debe fallar
+    await request(app.getHttpServer())
+      .post('/api/auth/refresh')
+      .send({ refreshToken: refresh_token })
+      .expect(401);
+  });
+
+  it('POST /api/auth/refresh con token inválido → 401', async () => {
+    await request(app.getHttpServer())
+      .post('/api/auth/refresh')
+      .send({ refreshToken: 'token-invalido' })
+      .expect(401);
+  });
+
+  it('POST /api/auth/logout → 200 y revoca access + refresh tokens', async () => {
+    const loginRes = await request(app.getHttpServer())
+      .post('/api/auth/login')
+      .send({ email, password })
+      .expect(200);
+    const body = loginRes.body as AuthBody;
+
+    await request(app.getHttpServer())
+      .post('/api/auth/logout')
+      .set('Authorization', `Bearer ${body.access_token}`)
+      .send({ refreshToken: body.refresh_token })
+      .expect(200);
+
+    // El access token quedó blacklisteado → 401
+    await request(app.getHttpServer())
+      .get('/api/auth/profile')
+      .set('Authorization', `Bearer ${body.access_token}`)
+      .expect(401);
+
+    // El refresh token quedó revocado → 401
+    await request(app.getHttpServer())
+      .post('/api/auth/refresh')
+      .send({ refreshToken: body.refresh_token })
+      .expect(401);
+
+    // Limpieza: la blacklist de este jti (la tabla no tiene FK a users)
+    const jti = getJti(body.access_token);
+    if (dataSource && jti) {
+      await dataSource.query('DELETE FROM revoked_tokens WHERE jti = $1', [
+        jti,
+      ]);
+    }
   });
 
   it('POST /api/auth/login con contraseña incorrecta → 401', async () => {

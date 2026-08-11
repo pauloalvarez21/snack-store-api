@@ -1,5 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { APP_GUARD } from '@nestjs/core';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AddressesModule } from './addresses/addresses.module';
 import { AppController } from './app.controller';
@@ -18,6 +20,18 @@ import { UsersModule } from './users/users.module';
     ConfigModule.forRoot({
       isGlobal: true,
     }),
+    // Rate limiting global: 100 peticiones/minuto por IP (los endpoints
+    // sensibles como login/register tienen límites más estrictos con @Throttle)
+    ThrottlerModule.forRoot([
+      {
+        name: 'default',
+        ttl: 60_000,
+        limit: 100,
+        // Los tests e2e levantan la app completa: se desactiva el rate
+        // limiting cuando NODE_ENV=test (fijado en test/setup-e2e.js)
+        skipIf: () => process.env.NODE_ENV === 'test',
+      },
+    ]),
     TypeOrmModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => ({
@@ -42,6 +56,10 @@ import { UsersModule } from './users/users.module';
     UploadsModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [
+    AppService,
+    // Guard global de rate limiting: se ejecuta antes que los guards de cada ruta
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
+  ],
 })
 export class AppModule {}

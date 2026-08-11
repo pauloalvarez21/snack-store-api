@@ -8,7 +8,7 @@ API REST para un sistema de venta de comestibles en línea construida con **Nest
 |------|------------|
 | Framework | [NestJS 11](https://nestjs.com) + TypeScript |
 | Base de datos | PostgreSQL (TypeORM) |
-| Autenticación | JWT (Passport) + bcrypt |
+| Autenticación | JWT (Passport) + bcrypt + refresh tokens con rotación y revocación (logout) |
 | Autorización | Roles (ADMIN / CUSTOMER / DELIVERY) vía `@Roles` + `RolesGuard` |
 | Validación | class-validator / class-transformer |
 | Tests | Jest (unitarios) + Supertest (e2e) |
@@ -42,6 +42,7 @@ cp .env.example .env
 | `JWT_SECRET` | Secreto para firmar los tokens JWT | `6fb3d4f…` (aleatorio, 64 chars) |
 | `JWT_EXPIRES_IN` | Expiración del token | `1h` |
 | `PORT` | Puerto del servidor | `3000` |
+| `CORS_ORIGINS` | Orígenes permitidos para llamar a la API (separados por coma) | `http://localhost:4200` |
 
 Para generar un `JWT_SECRET` seguro:
 
@@ -62,7 +63,7 @@ npm run build
 npm run start:prod
 ```
 
-La API queda disponible en `http://localhost:3000` con el prefijo global `/api` y CORS habilitado.
+La API queda disponible en `http://localhost:3000` con el prefijo global `/api`. El CORS está **restringido a los orígenes de `CORS_ORIGINS`** (default `http://localhost:4200`, el dev server de Angular); cuando subas el frontend, añade tu dominio a esa variable.
 
 ## 🗄️ Datos de ejemplo (seed)
 
@@ -113,6 +114,14 @@ Para generar un archivo `openapi.json` estático (p. ej. para entregarlo al fron
 npm run generate:openapi   # genera ./openapi.json en la raíz
 ```
 
+## 🔒 Seguridad
+
+La API incluye protecciones básicas aplicadas en `src/main.ts` y `src/app.module.ts`:
+
+- **Rate limiting** (`@nestjs/throttler`): límite global de **100 peticiones/minuto por IP**. Los endpoints sensibles tienen límites más estrictos: `POST /api/auth/login` y `POST /api/auth/register` (10/min) y `POST /api/users/me/change-password` (5/min). Se devuelve `429 Too Many Requests` al superar el límite.
+- **Helmet**: headers de seguridad HTTP (CSP, `X-Frame-Options`, `X-Content-Type-Options`, `Strict-Transport-Security`, etc.). `Cross-Origin-Resource-Policy` está en `cross-origin` para que el frontend pueda mostrar las imágenes de `/uploads`.
+- **CORS restringido**: solo los orígenes de `CORS_ORIGINS` pueden consumir la API.
+
 ## 🔐 Autenticación
 
 Todos los endpoints de autenticación viven bajo `/api/auth`.
@@ -138,6 +147,7 @@ curl -X POST http://localhost:3000/api/auth/register \
 ```json
 {
   "access_token": "eyJhbGciOiJIUzI1NiIs…",
+  "refresh_token": "b7Zk…token opaco de 64 caracteres…",
   "user": {
     "id": "8b1a2d5e-…",
     "email": "juan.perez@example.com",
@@ -159,7 +169,36 @@ curl -X POST http://localhost:3000/api/auth/login \
   -d '{"email": "juan.perez@example.com", "password": "MiClaveSegura123!"}'
 ```
 
-**Respuesta `200 OK`:** `{ "access_token": "…", "user": { … } }`
+**Respuesta `200 OK`:** `{ "access_token": "…", "refresh_token": "…", "user": { … } }`
+
+### Renovar la sesión (refresh token)
+
+`POST /api/auth/refresh` — canjea un refresh token por un **nuevo par** de tokens. El refresh token presentado se **rota** (queda revocado y se emite uno nuevo); reutilizar un token ya rotado se considera robo y **revoca todas las sesiones** del usuario.
+
+```bash
+curl -X POST http://localhost:3000/api/auth/refresh \
+  -H "Content-Type: application/json" \
+  -d '{"refreshToken": "b7Zk…token opaco…"}'
+```
+
+**Respuesta `200 OK`:** `{ "access_token": "…nuevo…", "refresh_token": "…nuevo…", "user": { … } }`
+
+### Cerrar sesión (logout) — revocación de JWT
+
+`POST /api/auth/logout` — revoca el **access token** actual (se añade a una blacklist hasta su expiración, ya no sirve) y, si se envía, también el **refresh token**. Requiere `Authorization: Bearer <token>`.
+
+```bash
+curl -X POST http://localhost:3000/api/auth/logout \
+  -H "Authorization: Bearer TU_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"refreshToken": "b7Zk…token opaco…"}'
+```
+
+**Respuesta `200 OK`:** sin contenido. A partir de ese momento, usar el access token revocado devuelve `401 Unauthorized`.
+
+> Los refresh tokens son **opacos** (64 caracteres aleatorios) y se guardan **hasheados** (SHA-256) en la tabla `refresh_tokens` — nunca en claro. Su vida la controla `REFRESH_TOKEN_EXPIRES_IN` (default `7d`).
+>
+> **Límite conocido:** ante la detección de un token reutilizado se revocan los refresh tokens de todas las sesiones del usuario, pero los access tokens ya emitidos siguen válidos hasta su expiración (`JWT_EXPIRES_IN`, default `1h`). La rotación es atómica (UPDATE condicional), por lo que dos peticiones concurrentes con el mismo token no pueden obtener dos pares válidos.
 
 ### Perfil (endpoint protegido)
 
@@ -171,6 +210,62 @@ curl http://localhost:3000/api/auth/profile \
 ```
 
 **Respuesta `200 OK`:** `{ "id": "…", "email": "…", "role": "CUSTOMER" }`
+
+### 👤 Usuarios y perfil — `/api/users`
+
+Cada usuario autenticado puede ver y editar **su propio perfil** y **cambiar su contraseña**. La gestión de usuarios (listar, ver detalle, cambiar rol) es **solo ADMIN**.
+
+| Método | Endpoint | Acceso | Descripción |
+|--------|----------|--------|-------------|
+| `GET` | `/api/users/me` | Autenticado | Mi perfil completo |
+| `PATCH` | `/api/users/me` | Autenticado | Editar mi perfil (`firstName`, `lastName`, `phone`) |
+| `POST` | `/api/users/me/change-password` | Autenticado | Cambiar mi contraseña (exige la actual) |
+| `GET` | `/api/users` | ADMIN | Listar usuarios paginado: `?page=&limit=&role=&search=` |
+| `GET` | `/api/users/:id` | ADMIN | Detalle de un usuario |
+| `PATCH` | `/api/users/:id/role` | ADMIN | Cambiar el rol de un usuario (no el propio) |
+
+```bash
+# Mi perfil
+curl http://localhost:3000/api/users/me \
+  -H "Authorization: Bearer TU_TOKEN"
+
+# Editar perfil (null en phone lo limpia)
+curl -X PATCH http://localhost:3000/api/users/me \
+  -H "Authorization: Bearer TU_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"firstName": "Juan", "phone": "+56912345678"}'
+
+# Cambiar contraseña
+curl -X POST http://localhost:3000/api/users/me/change-password \
+  -H "Authorization: Bearer TU_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"currentPassword": "MiClaveSegura123!", "newPassword": "MiNuevaClave456!"}'
+
+# ADMIN: promueve a un usuario a repartidor
+curl -X PATCH http://localhost:3000/api/users/ID_USUARIO/role \
+  -H "Authorization: Bearer TU_TOKEN_ADMIN" \
+  -H "Content-Type: application/json" \
+  -d '{"role": "DELIVERY"}'
+```
+
+**Respuesta `200 OK` (perfil):**
+
+```json
+{
+  "id": "8b1a2d5e-…",
+  "email": "juan.perez@example.com",
+  "firstName": "Juan",
+  "lastName": "Pérez",
+  "phone": "+56912345678",
+  "role": "CUSTOMER",
+  "createdAt": "2026-08-07T22:00:00.000Z",
+  "updatedAt": "2026-08-07T22:00:00.000Z"
+}
+```
+
+> El ADMIN no puede cambiar su **propio** rol (evita dejar el sistema sin administradores) y el `email` no se puede editar por perfil.
+>
+> Al cambiar la contraseña, los tokens JWT **ya emitidos siguen siendo válidos** hasta su expiración (el JWT es stateless); el usuario debe volver a iniciar sesión si quiere refrescar su token.
 
 ### Códigos de error comunes
 
@@ -621,12 +716,14 @@ npm run lint
 
 ```
 src/
-├── auth/                 # Autenticación (register, login, profile, JWT, roles)
+├── auth/                 # Autenticación (register, login, refresh, logout, JWT, roles)
 │   ├── dto/              # DTOs con validación
+│   ├── refresh-token.entity.ts   # Refresh tokens opacos (hasheados) con rotación
+│   ├── revoked-token.entity.ts   # Blacklist de access tokens revocados (logout)
 │   ├── auth.module.ts
 │   ├── auth.controller.ts
 │   ├── auth.service.ts
-│   ├── jwt.strategy.ts   # Estrategia Passport JWT
+│   ├── jwt.strategy.ts   # Estrategia Passport JWT + verificación de blacklist
 │   ├── jwt-auth.guard.ts
 │   ├── roles.guard.ts    # Autorización por rol (ADMIN)
 │   └── roles.decorator.ts
@@ -677,8 +774,11 @@ src/
 │   ├── orders.controller.ts
 │   ├── sales-csv.ts          # Serializa el reporte de ventas a CSV (export)
 │   └── orders.module.ts
-├── users/                # Entidad User y módulo de usuarios
+├── users/                # Perfil propio y gestión de usuarios (solo ADMIN)
+│   ├── dto/              # DTOs con validación
 │   ├── user.entity.ts
+│   ├── users.service.ts
+│   ├── users.controller.ts
 │   └── users.module.ts
 ├── common/               # Helpers compartidos (slugify, pagination, db-errors)
 ├── app.module.ts         # ConfigModule + TypeOrmModule
