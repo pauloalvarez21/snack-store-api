@@ -1,4 +1,5 @@
 import type { SalesReport } from './orders.service';
+import { PaymentMethod } from './payment.entity';
 import { buildSalesCsv } from './sales-csv';
 
 const report: SalesReport = {
@@ -16,7 +17,12 @@ const report: SalesReport = {
       amount: 12,
     },
   ],
-  byPaymentMethod: [{ method: 'CREDIT_CARD', orders: 3, amount: 50.01 }],
+  byPaymentMethod: [{ method: PaymentMethod.NEQUI, orders: 3, amount: 50.01 }],
+  paymentInstructions: [
+    { method: PaymentMethod.NEQUI, walletNumber: '3001234567' },
+    { method: PaymentMethod.DAVIPLATA, walletNumber: '3011234567' },
+    { method: PaymentMethod.CASH_ON_DELIVERY, walletNumber: null },
+  ],
 };
 
 describe('buildSalesCsv', () => {
@@ -31,6 +37,25 @@ describe('buildSalesCsv', () => {
     expect(csv).toContain('Ventas por día');
     expect(csv).toContain('Top productos (por monto)');
     expect(csv).toContain('Desglose por método de pago');
+    expect(csv).toContain('Instrucciones de pago');
+  });
+
+  it('incluye las instrucciones de pago con el número de cada billetera', () => {
+    const csv = buildSalesCsv(report);
+    expect(csv).toContain('Metodo,Detalle');
+    expect(csv).toContain('Nequi,3001234567');
+    expect(csv).toContain('Daviplata,3011234567');
+    expect(csv).toContain('Efectivo contra entrega,Se cobra al entregar');
+  });
+
+  it('marca como "No configurado" una billetera sin número en el entorno', () => {
+    const csv = buildSalesCsv({
+      ...report,
+      paymentInstructions: [
+        { method: PaymentMethod.NEQUI, walletNumber: null },
+      ],
+    });
+    expect(csv).toContain('Nequi,No configurado');
   });
 
   it('incluye el resumen, las ventas por día y los montos con 2 decimales', () => {
@@ -41,7 +66,7 @@ describe('buildSalesCsv', () => {
     expect(csv).toContain('Fecha,Pedidos,Monto');
     expect(csv).toContain('2026-08-08,2,33.34');
     expect(csv).toContain('Metodo,Pedidos,Monto');
-    expect(csv).toContain('CREDIT_CARD,3,50.01');
+    expect(csv).toContain('NEQUI,3,50.01');
   });
 
   it('escapa campos con comas entrecomillándolos', () => {
@@ -85,6 +110,7 @@ describe('buildSalesCsv', () => {
       byDay: [],
       topProducts: [],
       byPaymentMethod: [],
+      paymentInstructions: [],
     };
     const csv = buildSalesCsv(empty);
     expect(csv).toContain('Monto total,0.00');

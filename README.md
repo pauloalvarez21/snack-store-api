@@ -43,6 +43,8 @@ cp .env.example .env
 | `JWT_EXPIRES_IN` | Expiración del token | `1h` |
 | `PORT` | Puerto del servidor | `3000` |
 | `CORS_ORIGINS` | Orígenes permitidos para llamar a la API (separados por coma) | `http://localhost:4200` |
+| `PAYMENT_NEQUI_NUMBER` | Número de Nequi donde los clientes pagan (se muestra en el pedido) | `3001234567` |
+| `PAYMENT_DAVIPLATA_NUMBER` | Número de Daviplata donde los clientes pagan (se muestra en el pedido) | `3011234567` |
 
 Para generar un `JWT_SECRET` seguro:
 
@@ -89,6 +91,14 @@ Al re-ejecutar `seed.mjs`, en productos solo se refresca `image_url`.
 >
 > ```bash
 > node --env-file=.env scripts/migrate-orders-shipping.mjs
+> ```
+>
+> **Si tu base ya existía antes de este cambio de pagos:** ejecuta una vez la
+> migración que añade los métodos `NEQUI` y `DAVIPLATA` al enum `payment_method`
+> (idempotente):
+>
+> ```bash
+> node --env-file=.env scripts/migrate-payment-methods.mjs
 > ```
 
 ### 👤 Usuarios demo
@@ -463,12 +473,12 @@ curl -X POST http://localhost:3000/api/addresses \
 
 El checkout convierte el carrito en un pedido: valida el stock real en ese momento, **congela los precios** en `order_items` (historial inmutable aunque el producto cambie), **congela la dirección de envío** elegida (`shippingAddress` snapshot), descuenta el inventario de forma atómica y crea el **pago simulado**.
 
-**Pagos simulados** (sin pasarela externa todavía):
+**Pagos** (sin pasarela externa todavía):
 
 | Método | Comportamiento |
 |--------|----------------|
-| `CREDIT_CARD` / `DEBIT_CARD` | Se "cobra" al instante → `payment COMPLETED` y pedido `PAID` |
-| `TRANSFER` | Queda `PENDING` hasta que un ADMIN confirme el pago (pedido → `PAID`) |
+| `NEQUI` | Queda `PENDING` hasta que un ADMIN confirme el pago (pedido → `PAID`). La respuesta incluye `payment.walletNumber` con el número de Nequi del comercio |
+| `DAVIPLATA` | Queda `PENDING` hasta que un ADMIN confirme el pago (pedido → `PAID`). La respuesta incluye `payment.walletNumber` con el número de Daviplata del comercio |
 | `CASH_ON_DELIVERY` | Queda `PENDING` y se marca `COMPLETED` al entregar |
 
 **Ciclo de vida del pedido:** `PENDING → PAID → PREPARING → OUT_FOR_DELIVERY → DELIVERED` (o `CANCELLED`).
@@ -493,11 +503,11 @@ curl -X POST http://localhost:3000/api/carts/me/items \
   -H "Content-Type: application/json" \
   -d '{"productId": "8b1a2d5e-…", "quantity": 2}'
 
-# 2. Checkout con tarjeta y dirección guardada (pago simulado, queda PAID)
+# 2. Checkout con Nequi y dirección guardada (queda PENDING hasta confirmar el pago)
 curl -X POST http://localhost:3000/api/orders \
   -H "Authorization: Bearer TU_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"addressId": "8b1a2d5e-…", "paymentMethod": "CREDIT_CARD"}'
+  -d '{"addressId": "8b1a2d5e-…", "paymentMethod": "NEQUI"}'
 ```
 
 **Respuesta `201 Created` (resumen):**
@@ -506,7 +516,7 @@ curl -X POST http://localhost:3000/api/orders \
 {
   "id": "…",
   "orderNumber": 42,
-  "status": "PAID",
+  "status": "PENDING",
   "subtotal": 3.98,
   "deliveryFee": 0,
   "total": 3.98,
@@ -529,19 +539,22 @@ curl -X POST http://localhost:3000/api/orders \
   ],
   "payment": {
     "id": "…",
-    "method": "CREDIT_CARD",
-    "status": "COMPLETED",
-    "transactionId": "SIM-1A2B3C4D",
-    "amount": 3.98
+    "method": "NEQUI",
+    "status": "PENDING",
+    "transactionId": null,
+    "amount": 3.98,
+    "walletNumber": "3001234567"
   }
 }
 ```
+
+> Con `NEQUI` / `DAVIPLATA` el pedido nace `PENDING`: el cliente paga a ese número y un ADMIN confirma el cobro con `PATCH /api/orders/:id/status` → `PAID` (el pago pasa a `COMPLETED`).
 
 **Cambios de estado (`PATCH /api/orders/:id/status`):**
 
 | Acción | Rol | Transición |
 |--------|-----|------------|
-| Confirmar pago por transferencia | ADMIN | `PENDING → PAID` |
+| Confirmar pago (Nequi/Daviplata) | ADMIN | `PENDING → PAID` |
 | Empezar a preparar | ADMIN | `PENDING/PAID → PREPARING` |
 | En ruta de reparto | ADMIN o DELIVERY | `PREPARING → OUT_FOR_DELIVERY` |
 | Entregado (cobra el pago contra entrega) | ADMIN o DELIVERY | `OUT_FOR_DELIVERY → DELIVERED` |
@@ -589,11 +602,16 @@ curl "http://localhost:3000/api/orders/report/sales?from=2026-08-01T00:00:00.000
   "summary": { "totalOrders": 42, "totalAmount": 385.2, "averageTicket": 9.17 },
   "byDay": [{ "date": "2026-08-08", "orders": 12, "amount": 110.4 }],
   "topProducts": [{ "productId": "…", "productName": "Manzana Roja", "quantity": 28, "amount": 55.7 }],
-  "byPaymentMethod": [{ "method": "CREDIT_CARD", "orders": 30, "amount": 280.1 }]
+  "byPaymentMethod": [{ "method": "NEQUI", "orders": 30, "amount": 280.1 }],
+  "paymentInstructions": [
+    { "method": "NEQUI", "walletNumber": "3001234567" },
+    { "method": "DAVIPLATA", "walletNumber": "3011234567" },
+    { "method": "CASH_ON_DELIVERY", "walletNumber": null }
+  ]
 }
 ```
 
-**Exportar a CSV** (`GET /api/orders/report/sales/export`, **solo ADMIN**): descarga el mismo reporte como archivo `.csv` (compatible con Excel: BOM UTF-8 para los acentos y CRLF). Incluye 4 secciones: resumen, ventas por día, top productos y desglose por método de pago. Acepta los mismos filtros (`?from=&to=&topLimit=`).
+**Exportar a CSV** (`GET /api/orders/report/sales/export`, **solo ADMIN**): descarga el mismo reporte como archivo `.csv` (compatible con Excel: BOM UTF-8 para los acentos y CRLF). Incluye 5 secciones: resumen, ventas por día, top productos, desglose por método de pago e **instrucciones de pago** (el número de Nequi y Daviplata del comercio para compartir con los clientes). Acepta los mismos filtros (`?from=&to=&topLimit=`).
 
 ```bash
 # Descargar el CSV (guarda la respuesta como archivo)
@@ -625,7 +643,13 @@ Manzana Roja,28,55.70
 
 Desglose por método de pago
 Metodo,Pedidos,Monto
-CREDIT_CARD,30,280.10
+NEQUI,30,280.10
+
+Instrucciones de pago
+Metodo,Detalle
+Nequi,3001234567
+Daviplata,3011234567
+Efectivo contra entrega,Se cobra al entregar
 ```
 
 **Reporte de entregas** (`GET /api/orders/deliveries/me`): el repartidor ve su historial paginado de entregas con un **resumen agregado** (total entregado, monto cobrado y entregas de hoy). Filtros opcionales: `?page=&limit=&from=&to=`. El ADMIN puede ver las entregas de cualquier repartidor con `GET /api/orders/deliveries?userId=ID`.
@@ -769,7 +793,7 @@ src/
 │   ├── order.entity.ts
 │   ├── order-item.entity.ts
 │   ├── payment.entity.ts
-│   ├── payments.service.ts   # Pago simulado (tarjeta/transferencia/contra entrega)
+│   ├── payments.service.ts   # Pago simulado (nequi/daviplata/contra entrega)
 │   ├── orders.service.ts
 │   ├── orders.controller.ts
 │   ├── sales-csv.ts          # Serializa el reporte de ventas a CSV (export)

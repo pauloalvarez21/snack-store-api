@@ -5,8 +5,7 @@ import { Payment, PaymentMethod, PaymentStatus } from './payment.entity';
 
 /**
  * Pagos SIMULADOS: no hay pasarela externa todavía.
- * - Tarjetas (CREDIT_CARD / DEBIT_CARD) → se simula una pasarela exitosa (COMPLETED) al crear el pedido.
- * - Transferencia → queda PENDING hasta que un ADMIN confirma el pago.
+ * - Nequi / Daviplata → quedan PENDING hasta que un ADMIN confirma el pago.
  * - Contra entrega → queda PENDING y se marca COMPLETED al entregar.
  *
  * Todos los métodos reciben un `Repository<Payment>` para poder ejecutarse
@@ -14,30 +13,24 @@ import { Payment, PaymentMethod, PaymentStatus } from './payment.entity';
  */
 @Injectable()
 export class PaymentsService {
-  /** Crea el pago del pedido (las tarjetas se "cobran" al instante). */
+  /** Crea el pago del pedido (queda PENDING hasta confirmar el cobro). */
   async create(
     paymentsRepository: Repository<Payment>,
     orderId: string,
     method: PaymentMethod,
     amount: number,
   ): Promise<Payment> {
-    const isCard =
-      method === PaymentMethod.CREDIT_CARD ||
-      method === PaymentMethod.DEBIT_CARD;
-
     const payment = paymentsRepository.create({
       orderId,
       method,
       amount: amount.toString(),
-      status: isCard ? PaymentStatus.COMPLETED : PaymentStatus.PENDING,
-      transactionId: isCard
-        ? `SIM-${randomUUID().slice(0, 8).toUpperCase()}`
-        : null,
+      status: PaymentStatus.PENDING,
+      transactionId: null,
     });
     return paymentsRepository.save(payment);
   }
 
-  /** Confirma el pago (transferencia verificada o cobro contra entrega). */
+  /** Confirma el pago (Nequi/Daviplata verificado o cobro contra entrega). */
   async complete(
     paymentsRepository: Repository<Payment>,
     orderId: string,

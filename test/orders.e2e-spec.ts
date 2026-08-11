@@ -29,6 +29,7 @@ interface OrderBody {
     status: string;
     transactionId: string | null;
     amount: number;
+    walletNumber: string | null;
   } | null;
   shippingAddress: {
     addressLine1: string;
@@ -204,11 +205,11 @@ describe('Orders (e2e)', () => {
     await request(app.getHttpServer())
       .post('/api/orders')
       .set('Authorization', `Bearer ${strangerToken}`)
-      .send({ paymentMethod: 'CREDIT_CARD' })
+      .send({ paymentMethod: 'NEQUI' })
       .expect(400);
   });
 
-  it('POST /api/orders con tarjeta → 201, order PAID y payment COMPLETED', async () => {
+  it('POST /api/orders con Nequi → 201, order PENDING y payment PENDING con número de billetera', async () => {
     // Agregar al carrito
     await request(app.getHttpServer())
       .post('/api/carts/me/items')
@@ -219,11 +220,11 @@ describe('Orders (e2e)', () => {
     const res = await request(app.getHttpServer())
       .post('/api/orders')
       .set('Authorization', `Bearer ${customerToken}`)
-      .send({ paymentMethod: 'CREDIT_CARD' })
+      .send({ paymentMethod: 'NEQUI' })
       .expect(201);
 
     const body = res.body as OrderBody;
-    expect(body.status).toBe('PAID'); // tarjeta → pago confirmado al instante
+    expect(body.status).toBe('PENDING'); // Nequi → pago por confirmar
     expect(body.subtotal).toBe(16); // 2 × 8 (salePrice)
     expect(body.deliveryFee).toBe(0);
     expect(body.total).toBe(16);
@@ -233,9 +234,10 @@ describe('Orders (e2e)', () => {
     expect(body.items[0].quantity).toBe(2);
     expect(body.items[0].subtotal).toBe(16);
     expect(body.payment).not.toBeNull();
-    expect(body.payment?.method).toBe('CREDIT_CARD');
-    expect(body.payment?.status).toBe('COMPLETED');
-    expect(body.payment?.transactionId).toMatch(/^SIM-/);
+    expect(body.payment?.method).toBe('NEQUI');
+    expect(body.payment?.status).toBe('PENDING');
+    expect(body.payment?.transactionId).toBeNull();
+    expect(body.payment?.walletNumber).toBe('3001234567');
   });
 
   it('POST /api/orders con addressId → 201 y guarda el snapshot de la dirección', async () => {
@@ -260,7 +262,7 @@ describe('Orders (e2e)', () => {
     const res = await request(app.getHttpServer())
       .post('/api/orders')
       .set('Authorization', `Bearer ${customerToken}`)
-      .send({ addressId, paymentMethod: 'CREDIT_CARD' })
+      .send({ addressId, paymentMethod: 'NEQUI' })
       .expect(201);
 
     const body = res.body as OrderBody;
@@ -291,11 +293,11 @@ describe('Orders (e2e)', () => {
     await request(app.getHttpServer())
       .post('/api/orders')
       .set('Authorization', `Bearer ${customerToken}`)
-      .send({ addressId: strangerAddressId, paymentMethod: 'CREDIT_CARD' })
+      .send({ addressId: strangerAddressId, paymentMethod: 'NEQUI' })
       .expect(400);
   });
 
-  it('POST /api/orders con transferencia → 201, order PENDING y payment PENDING', async () => {
+  it('POST /api/orders con Daviplata → 201, order PENDING y payment PENDING con número de billetera', async () => {
     await request(app.getHttpServer())
       .delete('/api/carts/me')
       .set('Authorization', `Bearer ${customerToken}`)
@@ -309,13 +311,14 @@ describe('Orders (e2e)', () => {
     const res = await request(app.getHttpServer())
       .post('/api/orders')
       .set('Authorization', `Bearer ${customerToken}`)
-      .send({ paymentMethod: 'TRANSFER' })
+      .send({ paymentMethod: 'DAVIPLATA' })
       .expect(201);
 
     const body = res.body as OrderBody;
     expect(body.status).toBe('PENDING');
-    expect(body.payment?.method).toBe('TRANSFER');
+    expect(body.payment?.method).toBe('DAVIPLATA');
     expect(body.payment?.status).toBe('PENDING');
+    expect(body.payment?.walletNumber).toBe('3011234567');
   });
 
   it('POST /api/orders descuenta el stock del inventario', async () => {
@@ -323,7 +326,7 @@ describe('Orders (e2e)', () => {
       .get(`/api/inventory/${productId}`)
       .set('Authorization', `Bearer ${adminToken}`)
       .expect(200);
-    // Stock inicial 50 → pedidos previos: 2 (tarjeta) + 1 (snapshot) + 1 (transferencia)
+    // Stock inicial 50 → pedidos previos: 2 (nequi) + 1 (snapshot) + 1 (daviplata)
     expect((invRes.body as { stockQuantity: number }).stockQuantity).toBe(46);
   });
 
@@ -354,7 +357,7 @@ describe('Orders (e2e)', () => {
   it('POST /api/orders sin token → 401', async () => {
     await request(app.getHttpServer())
       .post('/api/orders')
-      .send({ paymentMethod: 'CREDIT_CARD' })
+      .send({ paymentMethod: 'NEQUI' })
       .expect(401);
   });
 
@@ -392,6 +395,20 @@ describe('Orders (e2e)', () => {
   });
 
   it('GET /api/orders/me con filter status=PAID → 200 solo PAID', async () => {
+    // Antes de filtrar, confirmar el pago de un pedido Nequi como ADMIN
+    const pending = await request(app.getHttpServer())
+      .get('/api/orders/me?status=PENDING')
+      .set('Authorization', `Bearer ${customerToken}`)
+      .expect(200);
+    const pendingBody = pending.body as { data: OrderBody[] };
+    expect(pendingBody.data.length).toBeGreaterThan(0);
+    const pendingOrder = pendingBody.data[0];
+    await request(app.getHttpServer())
+      .patch(`/api/orders/${pendingOrder.id}/status`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ status: 'PAID' })
+      .expect(200);
+
     const res = await request(app.getHttpServer())
       .get('/api/orders/me?status=PAID')
       .set('Authorization', `Bearer ${customerToken}`)
@@ -403,7 +420,7 @@ describe('Orders (e2e)', () => {
   });
 
   it('PATCH /api/orders/:id/status como ADMIN PENDING → PAID confirma el pago', async () => {
-    // Crear pedido con transferencia (queda PENDING)
+    // Crear pedido con Nequi (queda PENDING)
     await request(app.getHttpServer())
       .delete('/api/carts/me')
       .set('Authorization', `Bearer ${customerToken}`)
@@ -417,7 +434,7 @@ describe('Orders (e2e)', () => {
     const created = await request(app.getHttpServer())
       .post('/api/orders')
       .set('Authorization', `Bearer ${customerToken}`)
-      .send({ paymentMethod: 'TRANSFER' })
+      .send({ paymentMethod: 'NEQUI' })
       .expect(201);
 
     const orderId = (created.body as OrderBody).id;
@@ -440,7 +457,9 @@ describe('Orders (e2e)', () => {
       .set('Authorization', `Bearer ${customerToken}`)
       .expect(200);
 
-    const orderId = (res.body as { data: OrderBody[] }).data[0].id;
+    const paidBody = res.body as { data: OrderBody[] };
+    expect(paidBody.data.length).toBeGreaterThan(0);
+    const orderId = paidBody.data[0].id;
 
     await request(app.getHttpServer())
       .patch(`/api/orders/${orderId}/status`)
@@ -455,7 +474,9 @@ describe('Orders (e2e)', () => {
       .get('/api/orders/me?status=PAID')
       .set('Authorization', `Bearer ${customerToken}`)
       .expect(200);
-    const orderId = (res.body as { data: OrderBody[] }).data[0].id;
+    const paidBody = res.body as { data: OrderBody[] };
+    expect(paidBody.data.length).toBeGreaterThan(0);
+    const orderId = paidBody.data[0].id;
 
     await request(app.getHttpServer())
       .patch(`/api/orders/${orderId}/status`)
@@ -540,7 +561,7 @@ describe('Orders (e2e)', () => {
     const created = await request(app.getHttpServer())
       .post('/api/orders')
       .set('Authorization', `Bearer ${customerToken}`)
-      .send({ paymentMethod: 'TRANSFER' })
+      .send({ paymentMethod: 'NEQUI' })
       .expect(201);
     const orderId = (created.body as OrderBody).id;
 
@@ -577,7 +598,7 @@ describe('Orders (e2e)', () => {
     const created = await request(app.getHttpServer())
       .post('/api/orders')
       .set('Authorization', `Bearer ${customerToken}`)
-      .send({ paymentMethod: 'TRANSFER' })
+      .send({ paymentMethod: 'NEQUI' })
       .expect(201);
     const orderId = (created.body as OrderBody).id;
 
@@ -618,7 +639,7 @@ describe('Orders (e2e)', () => {
   });
 
   it('GET /api/orders/report/sales como ADMIN → 200 con métricas agregadas', async () => {
-    // Hay pedidos pagados de tests anteriores (tarjetas, transferencias)
+    // Hay pedidos pagados de tests anteriores (nequi confirmado, daviplata)
     const res = await request(app.getHttpServer())
       .get('/api/orders/report/sales')
       .set('Authorization', `Bearer ${adminToken}`)
@@ -633,6 +654,10 @@ describe('Orders (e2e)', () => {
       byDay: { date: string; orders: number; amount: number }[];
       topProducts: { productName: string; quantity: number; amount: number }[];
       byPaymentMethod: { method: string; orders: number; amount: number }[];
+      paymentInstructions: {
+        method: string;
+        walletNumber: string | null;
+      }[];
     };
 
     expect(body.summary.totalOrders).toBeGreaterThan(0);
@@ -642,6 +667,16 @@ describe('Orders (e2e)', () => {
     expect(body.topProducts.length).toBeGreaterThan(0);
     expect(body.topProducts[0].productName).toBe('Producto Pedidos');
     expect(body.byPaymentMethod.length).toBeGreaterThan(0);
+    expect(body.paymentInstructions.length).toBeGreaterThan(0);
+    expect(body.paymentInstructions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ method: 'NEQUI', walletNumber: '3001234567' }),
+        expect.objectContaining({
+          method: 'DAVIPLATA',
+          walletNumber: '3011234567',
+        }),
+      ]),
+    );
   });
 
   it('GET /api/orders/report/sales como CUSTOMER → 403', async () => {
@@ -676,6 +711,9 @@ describe('Orders (e2e)', () => {
     expect(res.text).toContain('Fecha,Pedidos,Monto');
     expect(res.text).toContain('Top productos (por monto)');
     expect(res.text).toContain('Desglose por método de pago');
+    expect(res.text).toContain('Instrucciones de pago');
+    expect(res.text).toContain('Nequi,3001234567');
+    expect(res.text).toContain('Daviplata,3011234567');
     expect(res.text).toContain('Producto Pedidos');
   });
 
@@ -735,7 +773,7 @@ describe('Orders (e2e)', () => {
     const created = await request(app.getHttpServer())
       .post('/api/orders')
       .set('Authorization', `Bearer ${customerToken}`)
-      .send({ paymentMethod: 'TRANSFER' })
+      .send({ paymentMethod: 'NEQUI' })
       .expect(201);
     const orderId = (created.body as OrderBody).id;
 
@@ -747,7 +785,7 @@ describe('Orders (e2e)', () => {
   });
 
   it('PATCH /api/orders/:id/status CUSTOMER cancela su pedido PENDING → 200 y stock devuelto', async () => {
-    // Pedido nuevo con transferencia (PENDING)
+    // Pedido nuevo con Nequi (PENDING)
     await request(app.getHttpServer())
       .delete('/api/carts/me')
       .set('Authorization', `Bearer ${customerToken}`)
@@ -761,7 +799,7 @@ describe('Orders (e2e)', () => {
     const created = await request(app.getHttpServer())
       .post('/api/orders')
       .set('Authorization', `Bearer ${customerToken}`)
-      .send({ paymentMethod: 'TRANSFER' })
+      .send({ paymentMethod: 'NEQUI' })
       .expect(201);
     const orderId = (created.body as OrderBody).id;
 
@@ -805,7 +843,7 @@ describe('Orders (e2e)', () => {
     const created = await request(app.getHttpServer())
       .post('/api/orders')
       .set('Authorization', `Bearer ${customerToken}`)
-      .send({ paymentMethod: 'TRANSFER' })
+      .send({ paymentMethod: 'NEQUI' })
       .expect(201);
     const orderId = (created.body as OrderBody).id;
 

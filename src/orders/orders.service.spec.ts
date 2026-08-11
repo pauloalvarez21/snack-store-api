@@ -87,11 +87,12 @@ describe('OrdersService', () => {
 
   const makePayment = (
     status: PaymentStatus = PaymentStatus.PENDING,
+    method: PaymentMethod = PaymentMethod.NEQUI,
   ): Payment =>
     ({
       id: 'eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee',
       orderId,
-      method: PaymentMethod.TRANSFER,
+      method,
       status,
       transactionId: null,
       amount: '16',
@@ -215,21 +216,21 @@ describe('OrdersService', () => {
       // findOne posterior al checkout (carga el pedido completo)
       ordersRepository.findOne.mockResolvedValue(
         makeOrder({
-          status: OrderStatus.PAID,
-          payment: makePayment(PaymentStatus.COMPLETED),
+          status: OrderStatus.PENDING,
+          payment: makePayment(PaymentStatus.PENDING),
           items: [makeItem()],
         }),
       );
 
       const result = await service.createCheckout(userId, {
-        paymentMethod: PaymentMethod.CREDIT_CARD,
+        paymentMethod: PaymentMethod.NEQUI,
       });
 
-      expect(result.status).toBe(OrderStatus.PAID);
+      expect(result.status).toBe(OrderStatus.PENDING);
       expect(result.subtotal).toBe(16);
       expect(result.total).toBe(16);
       expect(result.items[0].unitPrice).toBe(8);
-      expect(result.payment?.status).toBe(PaymentStatus.COMPLETED);
+      expect(result.payment?.status).toBe(PaymentStatus.PENDING);
     });
 
     it('lanza BadRequestException si el carrito está vacío', async () => {
@@ -237,7 +238,7 @@ describe('OrdersService', () => {
 
       await expect(
         service.createCheckout(userId, {
-          paymentMethod: PaymentMethod.CREDIT_CARD,
+          paymentMethod: PaymentMethod.NEQUI,
         }),
       ).rejects.toThrow(BadRequestException);
     });
@@ -263,7 +264,7 @@ describe('OrdersService', () => {
 
       await expect(
         service.createCheckout(userId, {
-          paymentMethod: PaymentMethod.CREDIT_CARD,
+          paymentMethod: PaymentMethod.NEQUI,
         }),
       ).rejects.toThrow(BadRequestException);
     });
@@ -289,7 +290,7 @@ describe('OrdersService', () => {
 
       await expect(
         service.createCheckout(userId, {
-          paymentMethod: PaymentMethod.CREDIT_CARD,
+          paymentMethod: PaymentMethod.NEQUI,
         }),
       ).rejects.toThrow(BadRequestException);
     });
@@ -332,17 +333,17 @@ describe('OrdersService', () => {
       );
       ordersRepository.findOne.mockResolvedValue(
         makeOrder({
-          status: OrderStatus.PAID,
+          status: OrderStatus.PENDING,
           shippingAddressLine1: 'Av. Providencia 1234',
           shippingCity: 'Santiago',
           items: [makeItem()],
-          payment: makePayment(PaymentStatus.COMPLETED),
+          payment: makePayment(PaymentStatus.PENDING),
         }),
       );
 
       const result = await service.createCheckout(userId, {
         addressId,
-        paymentMethod: PaymentMethod.CREDIT_CARD,
+        paymentMethod: PaymentMethod.NEQUI,
       });
 
       expect(addressesRepository.findOne).toHaveBeenCalledWith({
@@ -381,7 +382,7 @@ describe('OrdersService', () => {
       await expect(
         service.createCheckout(userId, {
           addressId: 'ffffffff-ffff-ffff-ffff-ffffffffffff',
-          paymentMethod: PaymentMethod.CREDIT_CARD,
+          paymentMethod: PaymentMethod.NEQUI,
         }),
       ).rejects.toThrow(BadRequestException);
     });
@@ -608,7 +609,7 @@ describe('OrdersService', () => {
 
       const paymentChain = makeChain();
       paymentChain.getRawMany.mockResolvedValue([
-        { method: 'CREDIT_CARD', orders: '2', amount: '34' },
+        { method: 'NEQUI', orders: '2', amount: '34' },
         { method: 'CASH_ON_DELIVERY', orders: '1', amount: '16' },
       ]);
 
@@ -635,7 +636,7 @@ describe('OrdersService', () => {
       expect(result.summary.averageTicket).toBeCloseTo(16.67, 2);
       expect(result.byDay).toHaveLength(2);
       expect(result.byDay[0].date).toBe('2026-08-08');
-      expect(result.byPaymentMethod[0].method).toBe('CREDIT_CARD');
+      expect(result.byPaymentMethod[0].method).toBe('NEQUI');
       expect(result.topProducts).toHaveLength(1);
       expect(result.topProducts[0].productName).toBe('Manzana');
       expect(result.topProducts[0].amount).toBe(34);

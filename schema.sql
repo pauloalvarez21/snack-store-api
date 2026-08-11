@@ -7,7 +7,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE TYPE user_role AS ENUM ('CUSTOMER', 'ADMIN', 'DELIVERY');
 CREATE TYPE order_status AS ENUM ('PENDING', 'PAID', 'PREPARING', 'OUT_FOR_DELIVERY', 'DELIVERED', 'CANCELLED');
 CREATE TYPE payment_status AS ENUM ('PENDING', 'COMPLETED', 'FAILED', 'REFUNDED');
-CREATE TYPE payment_method AS ENUM ('CREDIT_CARD', 'DEBIT_CARD', 'CASH_ON_DELIVERY', 'TRANSFER');
+CREATE TYPE payment_method AS ENUM ('NEQUI', 'DAVIPLATA', 'CASH_ON_DELIVERY');
 
 -- 3. Tabla de Usuarios
 CREATE TABLE users (
@@ -150,6 +150,10 @@ ALTER TABLE orders
     ADD COLUMN IF NOT EXISTS shipping_postal_code VARCHAR(20),
     ADD COLUMN IF NOT EXISTS shipping_delivery_notes TEXT,
     ADD COLUMN IF NOT EXISTS delivered_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL;
+
+-- Migración de pagos: si tu base ya existía antes del cambio a billeteras,
+-- ejecuta una vez scripts/migrate-payment-methods.mjs (añade NEQUI y
+-- DAVIPLATA al enum payment_method; los valores antiguos quedan sin uso).
 
 -- 12. Tokens de sesión (refresh tokens y revocación de access tokens)
 CREATE TABLE refresh_tokens (

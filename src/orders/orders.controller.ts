@@ -51,7 +51,7 @@ export class OrdersController {
   @ApiOperation({
     summary: 'Crear un pedido a partir del carrito (checkout)',
     description:
-      'Valida stock, congela precios, descuenta inventario y crea el pago simulado. Las tarjetas se cobran al instante (order → PAID); transferencia y contra entrega quedan PENDING.',
+      'Valida stock, congela precios, descuenta inventario y crea el pago simulado. Nequi/Daviplata y contra entrega quedan PENDING hasta que el ADMIN confirma el cobro (order → PAID) o se entrega el pedido.',
   })
   create(
     @CurrentUser() user: RequestUser,
@@ -107,7 +107,7 @@ export class OrdersController {
   @ApiOperation({
     summary: 'Reporte de ventas (solo ADMIN)',
     description:
-      'Métricas globales: resumen (pedidos, monto, ticket promedio), ventas por día, top productos y desglose por método de pago. Filtros: from, to, topLimit. Cuenta ventas pagadas o en proceso (PAID → DELIVERED).',
+      'Métricas globales: resumen (pedidos, monto, ticket promedio), ventas por día, top productos, desglose por método de pago e instrucciones de pago (número de billetera del comercio). Filtros: from, to, topLimit. Cuenta ventas pagadas o en proceso (PAID → DELIVERED).',
   })
   salesReport(@Query() query: SalesReportDto): Promise<SalesReport> {
     return this.ordersService.getSalesReport(query);
@@ -119,7 +119,7 @@ export class OrdersController {
   @ApiOperation({
     summary: 'Exportar reporte de ventas a CSV (solo ADMIN)',
     description:
-      'Descarga el reporte de ventas como archivo CSV (compatible con Excel) con las mismas métricas y filtros que /report/sales: resumen, ventas por día, top productos y desglose por método de pago.',
+      'Descarga el reporte de ventas como archivo CSV (compatible con Excel) con las mismas métricas y filtros que /report/sales: resumen, ventas por día, top productos, desglose por método de pago e instrucciones de pago (números de Nequi/Daviplata para compartir con los clientes).',
   })
   @ApiProduces('text/csv')
   @ApiOkResponse({

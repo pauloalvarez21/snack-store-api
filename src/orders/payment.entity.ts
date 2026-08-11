@@ -16,10 +16,9 @@ export enum PaymentStatus {
 }
 
 export enum PaymentMethod {
-  CREDIT_CARD = 'CREDIT_CARD',
-  DEBIT_CARD = 'DEBIT_CARD',
+  NEQUI = 'NEQUI',
+  DAVIPLATA = 'DAVIPLATA',
   CASH_ON_DELIVERY = 'CASH_ON_DELIVERY',
-  TRANSFER = 'TRANSFER',
 }
 
 @Entity('payments')

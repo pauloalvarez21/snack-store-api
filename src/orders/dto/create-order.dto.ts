@@ -30,8 +30,9 @@ export class CreateOrderDto {
 
   @ApiProperty({
     enum: PaymentMethod,
-    description: 'Método de pago del pedido',
-    example: PaymentMethod.CREDIT_CARD,
+    description:
+      'Método de pago del pedido: NEQUI, DAVIPLATA o CASH_ON_DELIVERY',
+    example: PaymentMethod.NEQUI,
   })
   @IsEnum(PaymentMethod, { message: 'paymentMethod no es válido' })
   paymentMethod: PaymentMethod;

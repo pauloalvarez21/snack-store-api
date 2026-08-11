@@ -61,6 +61,8 @@ export interface OrderPaymentResponse {
   status: PaymentStatus;
   transactionId: string | null;
   amount: number;
+  /** Número de la billetera del comercio (NEQUI/DAVIPLATA) para que el cliente pague. */
+  walletNumber: string | null;
 }
 
 export interface DeliveriesSummary {
@@ -124,6 +126,12 @@ export interface SalesReport {
   }[];
   /** Desglose por método de pago */
   byPaymentMethod: { method: PaymentMethod; orders: number; amount: number }[];
+  /**
+   * Datos para que los clientes paguen, por método (se incluyen en el CSV
+   * para poder imprimirlo/compartirlo). El número es null si no está
+   * configurado en el entorno.
+   */
+  paymentInstructions: { method: PaymentMethod; walletNumber: string | null }[];
 }
 
 export interface OrderShippingAddress {
@@ -169,6 +177,21 @@ export interface OrderResponse {
 function round(value: number, decimals: number): number {
   const factor = 10 ** decimals;
   return Math.round(value * factor) / factor;
+}
+
+/**
+ * Número de la billetera del comercio según el método de pago, para que el
+ * cliente sepa a dónde hacer el pago. Configurable por entorno.
+ */
+function walletNumberFor(method: PaymentMethod): string | null {
+  switch (method) {
+    case PaymentMethod.NEQUI:
+      return process.env.PAYMENT_NEQUI_NUMBER?.trim() || null;
+    case PaymentMethod.DAVIPLATA:
+      return process.env.PAYMENT_DAVIPLATA_NUMBER?.trim() || null;
+    default:
+      return null;
+  }
 }
 
 @Injectable()
@@ -279,10 +302,6 @@ export class OrdersService {
     );
     const total = round(subtotal + DELIVERY_FEE, 2);
 
-    const isCard =
-      dto.paymentMethod === PaymentMethod.CREDIT_CARD ||
-      dto.paymentMethod === PaymentMethod.DEBIT_CARD;
-
     const orderId = await this.dataSource.transaction(async (manager) => {
       const ordersRepository = manager.getRepository(Order);
       const orderItemsRepository = manager.getRepository(OrderItem);
@@ -310,7 +329,9 @@ export class OrdersService {
           shippingStateProvince: shippingAddress?.stateProvince ?? null,
           shippingPostalCode: shippingAddress?.postalCode ?? null,
           shippingDeliveryNotes: shippingAddress?.deliveryNotes ?? null,
-          status: isCard ? OrderStatus.PAID : OrderStatus.PENDING,
+          // Nequi/Daviplata quedan PENDING hasta que el ADMIN confirme el pago;
+          // contra entrega se cobra al entregar.
+          status: OrderStatus.PENDING,
           subtotal: subtotal.toString(),
           deliveryFee: DELIVERY_FEE.toString(),
           total: total.toString(),
@@ -355,7 +376,7 @@ export class OrdersService {
         }
       }
 
-      // Pago simulado (tarjetas → COMPLETED al instante)
+      // Pago simulado (queda PENDING hasta confirmar el cobro)
       await this.paymentsService.create(
         paymentsRepository,
         order.id,
@@ -637,6 +658,10 @@ export class OrdersService {
         orders: Number(r.orders),
         amount: Number(r.amount),
       })),
+      paymentInstructions: Object.values(PaymentMethod).map((method) => ({
+        method,
+        walletNumber: walletNumberFor(method),
+      })),
     };
   }
 
@@ -751,7 +776,7 @@ export class OrdersService {
       }
 
       if (target === OrderStatus.PAID) {
-        // ADMIN confirma la transferencia → pago COMPLETED
+        // ADMIN confirma el pago con billetera (Nequi/Daviplata) → COMPLETED
         await this.paymentsService.complete(paymentsRepository, order.id);
       }
 
@@ -895,6 +920,7 @@ export class OrdersService {
             status: order.payment.status,
             transactionId: order.payment.transactionId,
             amount: Number(order.payment.amount),
+            walletNumber: walletNumberFor(order.payment.method),
           }
         : null,
       createdAt: order.createdAt,
