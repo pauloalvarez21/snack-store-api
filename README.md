@@ -118,6 +118,12 @@ La API expone documentación interactiva generada con `@nestjs/swagger`:
 - **Swagger UI** (explorar y probar los endpoints): `http://localhost:3000/api/docs`
 - **Documento JSON**: `http://localhost:3000/api/docs-json`
 
+Los endpoints de **pedidos** documentan sus respuestas con schemas completos
+(`OrderResponseDto`, `SalesReportResponseDto`, etc.), así que en la doc verás
+campos como `payment.walletNumber` (el número de la billetera del comercio)
+y `paymentInstructions` (los números de Nequi/Daviplata del reporte de ventas).
+Si el frontend genera tipos desde el OpenAPI, estas interfaces salen solas.
+
 Para generar un archivo `openapi.json` estático (p. ej. para entregarlo al frontend):
 
 ```bash
@@ -790,6 +796,8 @@ src/
 │   └── addresses.module.ts
 ├── orders/               # Pedidos y pagos (checkout desde el carrito)
 │   ├── dto/
+│   │   ├── order-response.dto.ts       # DTOs de respuesta (OrderResponseDto, walletNumber, …)
+│   │   └── sales-report-response.dto.ts # DTO de respuesta del reporte (paymentInstructions)
 │   ├── order.entity.ts
 │   ├── order-item.entity.ts
 │   ├── payment.entity.ts

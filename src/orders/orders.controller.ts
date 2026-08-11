@@ -14,6 +14,7 @@ import {
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
+  ApiCreatedResponse,
   ApiOkResponse,
   ApiOperation,
   ApiProduces,
@@ -38,6 +39,12 @@ import type {
   SalesReport,
 } from './orders.service';
 import { OrdersService } from './orders.service';
+import {
+  DeliveriesReportDto,
+  OrderResponseDto,
+  PaginatedOrderResponseDto,
+} from './dto/order-response.dto';
+import { SalesReportResponseDto } from './dto/sales-report-response.dto';
 import { buildSalesCsv } from './sales-csv';
 
 @ApiTags('orders')
@@ -53,6 +60,11 @@ export class OrdersController {
     description:
       'Valida stock, congela precios, descuenta inventario y crea el pago simulado. Nequi/Daviplata y contra entrega quedan PENDING hasta que el ADMIN confirma el cobro (order → PAID) o se entrega el pedido.',
   })
+  @ApiCreatedResponse({
+    type: OrderResponseDto,
+    description:
+      'Pedido creado (incluye payment.walletNumber si usa Nequi/Daviplata)',
+  })
   create(
     @CurrentUser() user: RequestUser,
     @Body() dto: CreateOrderDto,
@@ -64,6 +76,7 @@ export class OrdersController {
   @ApiOperation({
     summary: 'Mis pedidos (paginado, opcionalmente por estado)',
   })
+  @ApiOkResponse({ type: PaginatedOrderResponseDto })
   findMy(
     @CurrentUser() user: RequestUser,
     @Query() query: ListOrdersDto,
@@ -79,6 +92,7 @@ export class OrdersController {
     description:
       'Historial paginado de los pedidos que el repartidor autenticado entregó, con resumen: total entregado, monto cobrado y entregas de hoy. Filtros: page, limit, from, to.',
   })
+  @ApiOkResponse({ type: DeliveriesReportDto })
   findMyDeliveries(
     @CurrentUser() user: RequestUser,
     @Query() query: ListDeliveriesDto,
@@ -94,6 +108,7 @@ export class OrdersController {
     description:
       'Igual que /deliveries/me pero permite filtrar por repartidor con ?userId=. Sin userId usa el repartidor autenticado.',
   })
+  @ApiOkResponse({ type: DeliveriesReportDto })
   findAllDeliveries(
     @CurrentUser() user: RequestUser,
     @Query() query: ListDeliveriesDto,
@@ -108,6 +123,11 @@ export class OrdersController {
     summary: 'Reporte de ventas (solo ADMIN)',
     description:
       'Métricas globales: resumen (pedidos, monto, ticket promedio), ventas por día, top productos, desglose por método de pago e instrucciones de pago (número de billetera del comercio). Filtros: from, to, topLimit. Cuenta ventas pagadas o en proceso (PAID → DELIVERED).',
+  })
+  @ApiOkResponse({
+    type: SalesReportResponseDto,
+    description:
+      'Reporte con paymentInstructions (números de billetera del comercio)',
   })
   salesReport(@Query() query: SalesReportDto): Promise<SalesReport> {
     return this.ordersService.getSalesReport(query);
@@ -146,6 +166,7 @@ export class OrdersController {
   @UseGuards(RolesGuard)
   @Roles(UserRole.ADMIN, UserRole.DELIVERY)
   @ApiOperation({ summary: 'Listar todos los pedidos (solo ADMIN/DELIVERY)' })
+  @ApiOkResponse({ type: PaginatedOrderResponseDto })
   findAll(@Query() query: ListOrdersDto): Promise<Paginated<OrderResponse>> {
     return this.ordersService.findAll(query);
   }
@@ -154,6 +175,7 @@ export class OrdersController {
   @ApiOperation({
     summary: 'Detalle de un pedido (dueño, ADMIN o DELIVERY)',
   })
+  @ApiOkResponse({ type: OrderResponseDto })
   findOne(
     @CurrentUser() user: RequestUser,
     @Param('id', ParseUUIDPipe) id: string,
@@ -168,6 +190,7 @@ export class OrdersController {
     description:
       'Endpoint único del repartidor: pasa el pedido de OUT_FOR_DELIVERY a DELIVERED, registra quién lo entregó (deliveredBy) y cobra los pagos contra entrega.',
   })
+  @ApiOkResponse({ type: OrderResponseDto })
   deliver(
     @CurrentUser() user: RequestUser,
     @Param('id', ParseUUIDPipe) id: string,
@@ -181,6 +204,7 @@ export class OrdersController {
     description:
       'CUSTOMER (dueño) puede cancelar su pedido. ADMIN avanza el flujo (PAID, PREPARING, OUT_FOR_DELIVERY, DELIVERED, CANCELLED). DELIVERY marca PREPARING→OUT_FOR_DELIVERY→DELIVERED.',
   })
+  @ApiOkResponse({ type: OrderResponseDto })
   updateStatus(
     @CurrentUser() user: RequestUser,
     @Param('id', ParseUUIDPipe) id: string,
