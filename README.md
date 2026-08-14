@@ -42,7 +42,7 @@ cp .env.example .env
 | `JWT_SECRET` | Secreto para firmar los tokens JWT | `6fb3d4f…` (aleatorio, 64 chars) |
 | `JWT_EXPIRES_IN` | Expiración del token | `1h` |
 | `PORT` | Puerto del servidor | `3000` |
-| `CORS_ORIGINS` | Orígenes permitidos para llamar a la API (separados por coma) | `http://localhost:4200` |
+| `CORS_ORIGINS` | Orígenes permitidos para llamar a la API (separados por coma) | `http://localhost:4200,https://gaelectronica.free.je` |
 | `PAYMENT_NEQUI_NUMBER` | Número de Nequi donde los clientes pagan (se muestra en el pedido) | `3001234567` |
 | `PAYMENT_DAVIPLATA_NUMBER` | Número de Daviplata donde los clientes pagan (se muestra en el pedido) | `3011234567` |
 
@@ -65,7 +65,7 @@ npm run build
 npm run start:prod
 ```
 
-La API queda disponible en `http://localhost:3000` con el prefijo global `/api`. El CORS está **restringido a los orígenes de `CORS_ORIGINS`** (default `http://localhost:4200`, el dev server de Angular); cuando subas el frontend, añade tu dominio a esa variable.
+La API queda disponible en `http://localhost:3000` con el prefijo global `/api`. El CORS está **restringido a los orígenes de `CORS_ORIGINS`** (default `http://localhost:4200,https://gaelectronica.free.je`); cuando subas el frontend, añade tu dominio a esa variable.
 
 ## 🗄️ Datos de ejemplo (seed)
 
