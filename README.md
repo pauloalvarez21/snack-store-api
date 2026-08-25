@@ -132,11 +132,51 @@ npm run generate:openapi   # genera ./openapi.json en la raíz
 
 ## 🔒 Seguridad
 
-La API incluye protecciones básicas aplicadas en `src/main.ts` y `src/app.module.ts`:
+La API incluye múltiples capas de protección:
 
-- **Rate limiting** (`@nestjs/throttler`): límite global de **100 peticiones/minuto por IP**. Los endpoints sensibles tienen límites más estrictos: `POST /api/auth/login` y `POST /api/auth/register` (10/min) y `POST /api/users/me/change-password` (5/min). Se devuelve `429 Too Many Requests` al superar el límite.
-- **Helmet**: headers de seguridad HTTP (CSP, `X-Frame-Options`, `X-Content-Type-Options`, `Strict-Transport-Security`, etc.). `Cross-Origin-Resource-Policy` está en `cross-origin` para que el frontend pueda mostrar las imágenes de `/uploads`.
-- **CORS restringido**: solo los orígenes de `CORS_ORIGINS` pueden consumir la API.
+### Headers de seguridad HTTP
+
+- **Helmet**: CSP, `X-Frame-Options`, `X-Content-Type-Options`, `Strict-Transport-Security`, etc.
+- **Cross-Origin-Resource-Policy**: `cross-origin` para que el frontend pueda mostrar las imágenes de `/uploads`.
+- **X-Content-Type-Options**: `nosniff` en archivos estáticos para prevenir MIME sniffing.
+
+### Rate limiting
+
+- **Global**: 100 peticiones/minuto por key (IP para no autenticados, IP+userId para autenticados).
+- **Login/Register/Refresh**: 10 peticiones/minuto por key (protección contra fuerza bruta).
+- **Respuesta**: `429 Too Many Requests` al superar el límite.
+
+### Autenticación y sesiones
+
+- **JWT con rotación**: Access tokens de 1h (configurable) + refresh tokens de 7d con rotación.
+- **Refresh token cookie**: Se envía como `httpOnly`, `secure`, `sameSite=strict` (protección contra XSS y CSRF).
+- **Blacklist de tokens**: Logout revoca el access token (blacklist) y el refresh token.
+- **Detección de robo**: Reusar un refresh token revoca todas las sesiones del usuario.
+
+### Validación de entrada
+
+- **ValidationPipe global**: `whitelist=true` (elimina propiedades extra), `forbidNonWhitelisted=true` (400 si hay propiedades desconocidas), `transform=true`.
+- **Contraseña fuerte**: Mínimo 8 caracteres, al menos 1 mayúscula, 1 minúscula y 1 número.
+- **DTOs validados**: Todos los endpoints usan `class-validator` con decoradores.
+
+### Protección de archivos
+
+- **Uploads**: Solo ADMIN puede subir imágenes (JWT + RolesGuard).
+- **Validación de firma**: Se verifica la firma real del archivo (magic bytes), no solo el mimetype.
+- **Límite de tamaño**: 5 MB máximo por imagen.
+- **Cache**: Headers `Cache-Control: public, max-age=86400` para imágenes.
+
+### Análisis de seguridad
+
+- **ESLint Security**: Plugins `eslint-plugin-security` y `eslint-plugin-security-node` para detección estática de vulnerabilidades.
+- **npm audit**: Dependencias auditadas y actualizadas.
+- **gitleaks**: Detección de secretos hardcodeados (configurado en `.gitleaks.toml`).
+- **TypeScript strict**: Habilitado `strict: true` para mayor seguridad de tipos.
+
+### Swagger (OpenAPI)
+
+- **Protegido en producción**: Swagger UI (`/api/docs`) solo está disponible cuando `NODE_ENV !== 'production'`.
+- **Desarrollo**: En desarrollo, Swagger está disponible en `http://localhost:3000/api/docs`.
 
 ## 🔐 Autenticación
 
@@ -724,7 +764,115 @@ curl -X POST http://localhost:3000/api/carts/me/items \
 
 > El stock exacto se valida al momento de crear el pedido (checkout), no al agregar al carrito.
 
-## 🧪 Tests
+## 🖥️ Cambios para el Frontend
+
+### 1. Refresh token via cookie (recomendado)
+
+El refresh token ahora se envía como **cookie httpOnly** en login, register y refresh. El frontend puede seguir enviándolo en el body para backward compatibility, pero la cookie es la forma recomendada.
+
+**Si usas Angular HttpClient con `withCredentials: true`:**
+
+```typescript
+// Configurar HttpClient para enviar/recibir cookies
+const httpOptions = {
+  withCredentials: true  // Enviar y recibir cookies
+};
+
+// Login
+this.http.post('/api/auth/login', { email, password }, httpOptions)
+  .subscribe(res => {
+    // access_token viene en el body
+    // refresh_token viene en la cookie httpOnly (automático)
+    localStorage.setItem('access_token', res.access_token);
+  });
+```
+
+**Si prefieres enviar el refresh token en el body (backward compatible):**
+
+```typescript
+// El endpoint acepta refreshToken en el body O en la cookie
+// Si no envías refreshToken en el body, lee la cookie automáticamente
+this.http.post('/api/auth/refresh', { refreshToken: token }, httpOptions)
+```
+
+**Configuración de CORS en el backend:**
+
+```env
+# En tu .env del backend
+CORS_ORIGINS=http://localhost:4200,https://tu-dominio.com
+```
+
+### 2. Validación de contraseña
+
+Las contraseñas ahora requieren:
+- Mínimo 8 caracteres
+- Al menos 1 letra mayúscula
+- Al menos 1 letra minúscula
+- Al menos 1 número
+
+**Actualizar el formulario de registro:**
+
+```typescript
+// Validación en el frontend
+const passwordPattern = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
+
+if (!passwordPattern.test(password)) {
+  // Mostrar error: "La contraseña debe tener mayúscula, minúscula y número"
+}
+```
+
+### 3. Manejo de rate limiting
+
+El backend devuelve `429 Too Many Requests` cuando se supera el límite.
+
+**Manejar en el frontend:**
+
+```typescript
+import { HttpErrorResponse } from '@angular/common/http';
+
+this.authService.login(credentials).subscribe({
+  error: (err: HttpErrorResponse) => {
+    if (err.status === 429) {
+      // Mostrar: "Demasiados intentos. Espera un minuto."
+      this.showError('Demasiados intentos de inicio de sesión. Espera un minuto.');
+    }
+  }
+});
+```
+
+### 4. Headers de cache para imágenes
+
+Las imágenes de `/uploads/` ahora tienen cache de 1 día. No necesitas cambios en el frontend, pero si necesitas forzar recarga:
+
+```typescript
+// Para bustear cache de una imagen
+const imageUrl = `${baseUrl}/uploads/${filename}?t=${Date.now()}`;
+```
+
+### 5. Cambios en el logout
+
+El logout ahora elimina la cookie del refresh token automáticamente.
+
+```typescript
+// Logout (con cookie)
+this.http.post('/api/auth/logout', { refreshToken }, { withCredentials: true })
+  .subscribe(() => {
+    localStorage.removeItem('access_token');
+    // La cookie se elimina automáticamente
+  });
+```
+
+### 6. Resumen de cambios
+
+| Cambio | Impacto en Frontend | Acción requerida |
+|--------|---------------------|------------------|
+| Refresh token cookie | Opcional (backward compatible) | Agregar `withCredentials: true` si usas cookie |
+| Contraseña fuerte | Formulario de registro | Validar patrón de contraseña |
+| Rate limiting 429 | Manejo de errores | Mostrar mensaje de espera |
+| Cache imágenes | Ninguno | Opcional: bustear cache |
+| Swagger protegido | Ninguno | Solo disponible en desarrollo |
+
+---
 
 ```bash
 # tests unitarios (Jest)

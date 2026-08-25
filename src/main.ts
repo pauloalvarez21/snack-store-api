@@ -4,6 +4,7 @@ import { NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import type { Response } from 'express';
+import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { UPLOADS_DIR } from './uploads/uploads.constants';
@@ -13,6 +14,9 @@ async function bootstrap() {
   const configService = app.get(ConfigService);
 
   app.setGlobalPrefix('api');
+
+  // Cookies: parsing de cabeceras Cookie (necesario para refresh token via cookie)
+  app.use(cookieParser());
 
   // Headers de seguridad HTTP (X-Frame-Options, X-Content-Type-Options,
   // Strict-Transport-Security, CSP, etc.)
@@ -54,9 +58,14 @@ async function bootstrap() {
   // Imágenes subidas por el front: se guardan en uploads/ y se sirven en /uploads/...
   app.useStaticAssets(UPLOADS_DIR, {
     prefix: '/uploads',
-    // Evita que el navegador interprete el contenido como otro tipo (MIME sniffing)
-    setHeaders: (res: Response) =>
-      res.setHeader('X-Content-Type-Options', 'nosniff'),
+    setHeaders: (res: Response) => {
+      // Evita que el navegador interprete el contenido como otro tipo (MIME sniffing)
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      // Cache de 1 día para imágenes (mejora rendimiento del frontend)
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+      // Permite que el navegador muestre la imagen inline (no descarga)
+      res.setHeader('Content-Disposition', 'inline');
+    },
   });
 
   app.useGlobalPipes(
@@ -83,8 +92,12 @@ async function bootstrap() {
     .build();
 
   const document = SwaggerModule.createDocument(app, swaggerConfig);
-  // UI interactiva en /api/docs · documento JSON en /api/docs-json
-  SwaggerModule.setup('api/docs', app, document);
+
+  // Swagger solo en desarrollo/test: expone la estructura completa de la API
+  if (process.env.NODE_ENV !== 'production') {
+    // UI interactiva en /api/docs · documento JSON en /api/docs-json
+    SwaggerModule.setup('api/docs', app, document);
+  }
 
   await app.listen(Number(configService.get('PORT') ?? 3000));
 }

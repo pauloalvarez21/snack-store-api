@@ -1,0 +1,26 @@
+# gitleaks configuration
+# https://github.com/gitleaks/gitleaks#configuration
+
+# Allowlist: excluir patrones de ejemplo en documentación
+[allowlist]
+  description = "Excluir patrones de ejemplo en documentación y plantillas"
+  paths = [
+    '''README\.md$''',
+    '''TEST_USERS\.md$''',
+    '''\.gitleaks\.toml$''',
+    '''\.env\.example$''',
+  ]
+
+# Regla custom: JWT_SECRET en .env (por si se sube por error)
+[[rules]]
+  id = "jwt-secret-in-env"
+  description = "JWT_SECRET hardcoded or in .env"
+  regex = '''(?i)(jwt[_-]?secret)\s*[:=]\s*['\"]?([a-zA-Z0-9_\-\.]{16,})['\"]?'''
+  tags = ["key", "jwt"]
+
+# Regla custom: DATABASE_URL con password
+[[rules]]
+  id = "database-url-password"
+  description = "DATABASE_URL with embedded password"
+  regex = '''(?i)(postgresql|mysql|mongodb)://[^:]+:([^@\s]{8,})@[^\s]+'''
+  tags = ["key", "database"]

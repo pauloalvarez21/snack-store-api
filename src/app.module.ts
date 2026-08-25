@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
-import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { ThrottlerModule } from '@nestjs/throttler';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AddressesModule } from './addresses/addresses.module';
 import { AppController } from './app.controller';
@@ -9,6 +9,7 @@ import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
 import { CartsModule } from './carts/carts.module';
 import { CategoriesModule } from './categories/categories.module';
+import { CustomThrottlerGuard } from './common/custom-throttler.guard';
 import { InventoryModule } from './inventory/inventory.module';
 import { OrdersModule } from './orders/orders.module';
 import { ProductsModule } from './products/products.module';
@@ -59,7 +60,8 @@ import { UsersModule } from './users/users.module';
   providers: [
     AppService,
     // Guard global de rate limiting: se ejecuta antes que los guards de cada ruta
-    { provide: APP_GUARD, useClass: ThrottlerGuard },
+    // Usa CustomThrottlerGuard que genera keys IP+userId para rate limiting por usuario
+    { provide: APP_GUARD, useClass: CustomThrottlerGuard },
   ],
 })
 export class AppModule {}

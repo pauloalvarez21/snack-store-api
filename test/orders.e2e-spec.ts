@@ -670,7 +670,10 @@ describe('Orders (e2e)', () => {
     expect(body.paymentInstructions.length).toBeGreaterThan(0);
     expect(body.paymentInstructions).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ method: 'NEQUI', walletNumber: '3001234567' }),
+        expect.objectContaining({
+          method: 'NEQUI',
+          walletNumber: '3001234567',
+        }),
         expect.objectContaining({
           method: 'DAVIPLATA',
           walletNumber: '3011234567',

@@ -4,6 +4,7 @@ import { PassportStrategy } from '@nestjs/passport';
 import { InjectRepository } from '@nestjs/typeorm';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { Repository } from 'typeorm';
+import { SecurityLogger } from '../common/security-logger';
 import { UserRole } from '../users/user.entity';
 import { RevokedToken } from './revoked-token.entity';
 
@@ -27,6 +28,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     configService: ConfigService,
     @InjectRepository(RevokedToken)
     private readonly revokedTokensRepository: Repository<RevokedToken>,
+    private readonly securityLogger: SecurityLogger,
   ) {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
@@ -45,6 +47,12 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       where: { jti: payload.jti },
     });
     if (revoked) {
+      this.securityLogger.log({
+        type: 'TOKEN_REVOKED',
+        userId: payload.sub,
+        email: payload.email,
+        details: `jti=${payload.jti}`,
+      });
       throw new UnauthorizedException('Token revocado');
     }
 

@@ -138,7 +138,9 @@ export class AuthService {
    * El token presentado se revoca al usarlo; reutilizar un token ya rotado
    * se considera robo y revoca TODAS las sesiones del usuario.
    */
-  async refresh(dto: RefreshDto): Promise<AuthResponse> {
+  async refresh(
+    dto: Required<Pick<RefreshDto, 'refreshToken'>> & RefreshDto,
+  ): Promise<AuthResponse> {
     const tokenHash = this.hashToken(dto.refreshToken);
     const token = await this.refreshTokensRepository.findOne({
       where: { tokenHash },
