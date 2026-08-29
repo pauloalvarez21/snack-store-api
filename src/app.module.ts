@@ -10,6 +10,7 @@ import { AuthModule } from './auth/auth.module';
 import { CartsModule } from './carts/carts.module';
 import { CategoriesModule } from './categories/categories.module';
 import { CustomThrottlerGuard } from './common/custom-throttler.guard';
+import { SlowQueryLogger } from './common/slow-query.logger';
 import { InventoryModule } from './inventory/inventory.module';
 import { OrdersModule } from './orders/orders.module';
 import { ProductsModule } from './products/products.module';
@@ -41,6 +42,10 @@ import { UsersModule } from './users/users.module';
         autoLoadEntities: true,
         // El esquema de la base lo gestiona schema.sql: TypeORM nunca debe alterarlo
         synchronize: false,
+        // Loguea queries lentas (>200ms) usando nuestro logger personalizado
+        maxQueryExecutionTime: 200,
+        logging: ['query', 'error'],
+        logger: new SlowQueryLogger(),
         // Reintentos para tolerar el DNS intermitente de la red
         retryAttempts: 5,
         retryDelay: 3000,

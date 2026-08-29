@@ -11,6 +11,7 @@ API REST para un sistema de venta de comestibles en línea construida con **Nest
 | Autenticación | JWT (Passport) + bcrypt + refresh tokens con rotación y revocación (logout) |
 | Autorización | Roles (ADMIN / CUSTOMER / DELIVERY) vía `@Roles` + `RolesGuard` |
 | Validación | class-validator / class-transformer |
+| Observabilidad | Transaction Tracing Interceptor + Slow Query Logger (TypeORM) |
 | Tests | Jest (unitarios) + Supertest (e2e) |
 
 ## 📋 Requisitos
@@ -172,6 +173,12 @@ La API incluye múltiples capas de protección:
 - **npm audit**: Dependencias auditadas y actualizadas.
 - **gitleaks**: Detección de secretos hardcodeados (configurado en `.gitleaks.toml`).
 - **TypeScript strict**: Habilitado `strict: true` para mayor seguridad de tipos.
+
+### Observabilidad y monitoreo
+
+- **Transaction Tracing Interceptor**: Mide y loguea el tiempo de cada petición HTTP (`[OK] GET /api/products - 45ms`).
+- **Slow Query Logger**: Detecta y loguea queries de PostgreSQL que tardan más de 200ms (`[SLOW QUERY] 350ms - SELECT * FROM orders...`).
+- **Configuración**: El umbral de queries lentas se puede ajustar en `src/common/slow-query.logger.ts` (constante `THRESHOLD_MS`).
 
 ### Swagger (OpenAPI)
 
@@ -961,6 +968,8 @@ src/
 │   ├── users.controller.ts
 │   └── users.module.ts
 ├── common/               # Helpers compartidos (slugify, pagination, db-errors)
+│   ├── interceptors/     # Interceptors globales (TransactionTracingInterceptor)
+│   ├── slow-query.logger.ts  # Logger personalizado de TypeORM para queries lentas
 ├── app.module.ts         # ConfigModule + TypeOrmModule
 └── main.ts               # Bootstrap (prefijo /api, CORS, ValidationPipe)
 schema.sql                # Esquema de la base de datos
@@ -985,4 +994,5 @@ test/                     # Tests e2e
 - [x] Pedidos y pagos (checkout con pago simulado y ciclo de estados)
 - [x] Direcciones de envío (libreta por usuario + snapshot inmutable en el pedido)
 - [x] Reporte de ventas y entregas (solo ADMIN / repartidor)
+- [x] Observabilidad (Transaction Tracing + Slow Query Logger)
 - [ ] Pasarela de pago real (Stripe / Mercado Pago / Transbank)

@@ -8,6 +8,7 @@ import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { UPLOADS_DIR } from './uploads/uploads.constants';
+import { TransactionTracingInterceptor } from './common/interceptors/transaction-tracing.interceptor';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
@@ -67,6 +68,8 @@ async function bootstrap() {
       res.setHeader('Content-Disposition', 'inline');
     },
   });
+
+  app.useGlobalInterceptors(new TransactionTracingInterceptor());
 
   app.useGlobalPipes(
     new ValidationPipe({
